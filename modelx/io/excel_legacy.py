@@ -121,12 +121,12 @@ class CellsTable:
             self.rows = _IndexRange(
                 0, len(self.data), [self.names_idx] + self.col_param_rows
             )
-            param_names = []
-            for col in self.row_param_cols:
-                param_names.append(self.data[self.names_idx][col].value)
-            for row in self.col_param_rows:
-                param_names.append(self.data[row][names_ext].value)
-
+            param_names = [
+                self.data[self.names_idx][col].value for col in self.row_param_cols
+            ]
+            param_names.extend(
+                self.data[row][names_ext].value for row in self.col_param_rows
+            )
         elif self.orientation == _ROW:
 
             self.col_param_rows = params
@@ -141,12 +141,12 @@ class CellsTable:
             self.cols = _IndexRange(
                 0, len(self.data[0]), [self.names_idx] + self.row_param_cols
             )
-            param_names = []
-            for row in self.col_param_rows:
-                param_names.append(self.data[row][self.names_idx].value)
-            for col in self.row_param_cols:
-                param_names.append(self.data[names_ext][col].value)
-
+            param_names = [
+                self.data[row][self.names_idx].value for row in self.col_param_rows
+            ]
+            param_names.extend(
+                self.data[names_ext][col].value for col in self.row_param_cols
+            )
         else:
             raise ValueError("invalid orientation")
 
@@ -167,16 +167,8 @@ class CellsTable:
                 if col in self.row_param_cols:
                     continue
 
-                next_name = self.data[self.names_idx][col].value
-
-                if not next_name:
-                    if name:
-                        col_len += 1
-                    else:
-                        raise ValueError("invalid name")
-                else:
+                if next_name := self.data[self.names_idx][col].value:
                     if name is None or name == next_name:
-                        name = next_name
                         col_len += 1
                     else:
                         cols_range = _IndexRange(col - col_len, col_len, [])
@@ -191,9 +183,13 @@ class CellsTable:
                             cols_range,
                             self.orientation,
                         )
-                        name = next_name
                         col_len = 1
 
+                    name = next_name
+                elif name:
+                    col_len += 1
+                else:
+                    raise ValueError("invalid name")
             if col_len > 0:
                 cols_range = _IndexRange(
                     len(self.data[0]) - col_len, col_len, []
@@ -219,16 +215,8 @@ class CellsTable:
                 if row in self.col_param_rows:
                     continue  # skip param row
 
-                next_name = self.data[row][self.names_idx].value
-
-                if not next_name:
-                    if name:
-                        row_len += 1
-                    else:  # first row is blank
-                        raise ValueError("invalid name")
-                else:
+                if next_name := self.data[row][self.names_idx].value:
                     if name is None or name == next_name:
-                        name = next_name
                         row_len += 1
                     else:
                         rows_range = _IndexRange(row - row_len, row_len, [])
@@ -243,9 +231,13 @@ class CellsTable:
                             self.cols,
                             self.orientation,
                         )
-                        name = next_name
                         row_len = 1
 
+                    name = next_name
+                elif name:
+                    row_len += 1
+                else:  # first row is blank
+                    raise ValueError("invalid name")
             if row_len > 0:  # last cells
                 rows_range = _IndexRange(len(self.data) - row_len, row_len, [])
 

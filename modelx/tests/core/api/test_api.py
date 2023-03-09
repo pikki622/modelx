@@ -4,10 +4,7 @@ import modelx as mx
 
 
 def foo(x):
-    if x == 0:
-        return 123
-    else:
-        return foo(x - 1)
+    return 123 if x == 0 else foo(x - 1)
 
 
 def baz(y, z):
@@ -80,7 +77,7 @@ def test_get_object_attrs(testmodel):
     attrs = ["spaces", "cells", "formula"]
 
     for obj, attr in zip(objs, attrs):
-        assert mx.get_object(obj.fullname + "." + attr) is getattr(obj, attr)
+        assert mx.get_object(f"{obj.fullname}.{attr}") is getattr(obj, attr)
 
 
 def test_get_object_error(testmodel):
@@ -99,9 +96,9 @@ def test_get_object_named_itemspace(testmodel):
 
     itemspace = testmodel.testspace[1]
     name = itemspace.name
-    assert mx.get_object("testmodel.testspace." + name) is itemspace
-    assert mx.get_object("testmodel.testspace." + name + ".foo") is itemspace.foo
-    assert mx.get_object("testmodel.testspace." + name + ".bar") == 3
+    assert mx.get_object(f"testmodel.testspace.{name}") is itemspace
+    assert mx.get_object(f"testmodel.testspace.{name}.foo") is itemspace.foo
+    assert mx.get_object(f"testmodel.testspace.{name}.bar") == 3
 
 
 @pytest.mark.parametrize(

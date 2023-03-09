@@ -32,10 +32,7 @@ def DiscRate(t):
 
 def InflFactor(t):
     """Inflation factors to adjust expense cashflows"""
-    if t == 0:
-        return 1
-    else:
-        return InflFactor(t-1) / (1 + AsmpLookup("InflRate"))
+    return 1 if t == 0 else InflFactor(t-1) / (1 + AsmpLookup("InflRate"))
 
 
 def InvstRetRate(t):

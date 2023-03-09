@@ -43,8 +43,7 @@ def fix_lamdaline(source):
 
     tkns = []
     try:
-        for t in gen:
-            tkns.append(t)
+        tkns.extend(iter(gen))
     except tokenize.TokenError:
         pass
 
@@ -94,7 +93,7 @@ def find_funcdef(source):
         return find_funcdef(fix_lamdaline(source))
 
     for node in ast.walk(module_node):
-        if isinstance(node, ast.FunctionDef) or isinstance(node, ast.Lambda):
+        if isinstance(node, (ast.FunctionDef, ast.Lambda)):
             return node
 
     raise ValueError("function definition not found")
@@ -106,9 +105,8 @@ def extract_params(source):
     funcdef = find_funcdef(source)
     params = []
     for node in ast.walk(funcdef.args):
-        if isinstance(node, ast.arg):
-            if node.arg not in params:
-                params.append(node.arg)
+        if isinstance(node, ast.arg) and node.arg not in params:
+            params.append(node.arg)
 
     return params
 
@@ -140,9 +138,12 @@ def extract_names(source):
 
     for stmt in stmts:
         for node in ast.walk(stmt):
-            if isinstance(node, ast.Name):
-                if node.id not in names and node.id not in params:
-                    names.append(node.id)
+            if (
+                isinstance(node, ast.Name)
+                and node.id not in names
+                and node.id not in params
+            ):
+                names.append(node.id)
 
     return names
 
@@ -200,12 +201,11 @@ class ModuleSource:
         namespace = {}
         eval(codeobj, namespace)
 
-        srcfuncs = {}
-        for name in namespace:
-            obj = namespace[name]
-            if isinstance(obj, FunctionType) and getsourcefile(obj) == file:
-                srcfuncs[name] = obj
-
+        srcfuncs = {
+            name: obj
+            for name, obj in namespace.items()
+            if isinstance(obj, FunctionType) and getsourcefile(obj) == file
+        }
         self.funcs = {}
         for name in module.__dict__:
             obj = getattr(module, name)
@@ -227,12 +227,9 @@ def is_funcdef(src: str):
 
     module_node = ast.parse(dedent(src))
 
-    if len(module_node.body) == 1 and isinstance(
-            module_node.body[0], ast.FunctionDef
-    ):
-        return True
-    else:
-        return False
+    return len(module_node.body) == 1 and isinstance(
+        module_node.body[0], ast.FunctionDef
+    )
 
 
 def is_lambda(src: str):
@@ -313,10 +310,10 @@ def replace_docstring(source: str, docstr: str, insert_indents=False):
         raise RuntimeError("FunctionDef not found")
 
     first_stmt = node.body[0]
-    docstr = '"""' + docstr + '"""'
+    docstr = f'"""{docstr}"""'
     prev_token = atok.tokens[first_stmt.first_token.index - 1]
 
-    if prev_token.type == token.INDENT:     # compound statements
+    if prev_token.type == token.INDENT: # compound statements
 
         # Insert indents
         lines = docstr.splitlines()
@@ -326,30 +323,25 @@ def replace_docstring(source: str, docstr: str, insert_indents=False):
 
         docstr = "\n".join(lines)
 
+        src_front = source[:prev_token.startpos]
         if isinstance(first_stmt, ast.Expr) and isinstance(
-                first_stmt.value, ast.Str):     # Has docstring
+                first_stmt.value, ast.Str):
+            return src_front + docstr + source[first_stmt.first_token.endpos:]
 
-            src_front = source[:prev_token.startpos]
-            src_back = source[first_stmt.first_token.endpos:]
-            return src_front + docstr + src_back
+        src_back = source[prev_token.startpos:]
+        return src_front + docstr + "\n" + src_back
 
-        else:   # No docstring
-            src_front = source[:prev_token.startpos]
-            src_back = source[prev_token.startpos:]
-            return src_front + docstr + "\n" + src_back
-
-    else:    # single line
+    else:# single line
 
         if isinstance(first_stmt, ast.Expr) and isinstance(
                 first_stmt.value, ast.Str):     # Has docstring
 
-            src_front = source[:first_stmt.first_token.startpos]
             src_back = source[first_stmt.first_token.endpos:]
 
         else:   # No docstring
-            src_front = source[:first_stmt.first_token.startpos]
             src_back = source[first_stmt.first_token.startpos:]
 
+        src_front = source[:first_stmt.first_token.startpos]
         return src_front + docstr + src_back
 
 
@@ -389,9 +381,11 @@ def extract_lambda_from_func(func: FunctionType):
     src = "".join(lines)
     atok = asttokens.ASTTokens(src, parse=True)
 
-    lambdas = list(n for n in ast.walk(atok.tree)
-                   if isinstance(n, ast.Lambda) and
-                   n.lineno == row + 1)     # row is 0-indexed
+    lambdas = [
+        n
+        for n in ast.walk(atok.tree)
+        if isinstance(n, ast.Lambda) and n.lineno == row + 1
+    ]
 
     if len(lambdas) == 1:
         node = lambdas[0]
@@ -415,11 +409,7 @@ class Formula:
         elif isinstance(func, Formula):
             self.__init__(func.source, name, module)
         elif isinstance(func, FunctionType):
-            if module is not None:
-                self.module = module
-            else:
-                self.module = func.__module__
-
+            self.module = module if module is not None else func.__module__
             try:
                 self._init_from_func(func, name)
                 self.srcnames = extract_names(self.source)
@@ -439,7 +429,7 @@ class Formula:
             self._init_from_source(func, name)
             self.srcnames = extract_names(self.source)
         else:
-            raise ValueError("Invalid argument func: %s" % func)
+            raise ValueError(f"Invalid argument func: {func}")
 
     def _init_from_func(self, func: FunctionType, name: str):
 
@@ -483,7 +473,7 @@ class Formula:
 
         namespace = {}
         # Assign the lambda to a temporary name to extract its object.
-        lambda_assignment = "_lambdafunc = " + src
+        lambda_assignment = f"_lambdafunc = {src}"
 
         exec(lambda_assignment, namespace)
         self.func = namespace["_lambdafunc"]
@@ -588,10 +578,7 @@ class BoundFunction(LazyEval):
         # Must not update owner's namespace to avoid circular updates.
         self.observe(owner._namespace)
         self.altfunc = None
-        if base is None:
-            self.global_names = None
-        else:
-            self.global_names = base.global_names
+        self.global_names = None if base is None else base.global_names
         self.set_refresh()
 
     def _init_names(self):
@@ -635,10 +622,7 @@ class BoundFunction(LazyEval):
         names = (self._init_names()
                  if self.global_names is None else self.global_names)
 
-        result = {}
-        for mid in ns.map_ids:
-            result[mid] = {}
-
+        result = {mid: {} for mid in ns.map_ids}
         result["missing"] = {}
         result["builtins"] = {}
 
@@ -740,15 +724,14 @@ class HasFormula:
 
         if self.formula is None:
             return None
-        else:
-            refs = self.altfunc.get_referents()
-            result = refs.copy()
+        refs = self.altfunc.get_referents()
+        result = refs.copy()
 
-            for key, data in refs.items():
-                if key != "builtins" and key != "missing":
-                    result[key] = {name: obj.to_node() for
-                                   name, obj in refs[key].items()}
-            return result
+        for key, data in refs.items():
+            if key not in ["builtins", "missing"]:
+                result[key] = {name: obj.to_node() for
+                               name, obj in refs[key].items()}
+        return result
 
     def get_valuerefs(self):
         refs = self.get_referents()

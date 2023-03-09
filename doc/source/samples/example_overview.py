@@ -4,8 +4,5 @@ model, space = mx.new_model(), mx.new_space()
 
 @mx.defcells
 def fibo(n):
-    if n == 0 or n == 1:
-        return n
-    else:
-        return fibo(n - 1) + fibo(n - 2)
+    return n if n in [0, 1] else fibo(n - 1) + fibo(n - 2)
 

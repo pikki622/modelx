@@ -67,11 +67,8 @@ def get_stateattrs(obj):
     mro.remove(object)
     attrs = {}
     for cls in mro:
-        cls_attrs = {}
-        for attr in cls.stateattrs:
-            cls_attrs[attr] = getattr(obj, attr)
-
-        attrs.update(cls_attrs)
+        cls_attrs = {attr: getattr(obj, attr) for attr in cls.stateattrs}
+        attrs |= cls_attrs
 
     return attrs
 
@@ -88,19 +85,15 @@ def get_module(module):
         module = sys.modules[module]
 
     else:
-        raise TypeError("%s is not a module or string." % module)
+        raise TypeError(f"{module} is not a module or string.")
 
     return module
 
 
 def get_param_func(param_names):
 
-    if param_names:
-        sig = "=None, ".join(param_names) + "=None"
-    else:
-        sig = ""
-
-    return "def _param_func(" + sig + "): pass"
+    sig = "=None, ".join(param_names) + "=None" if param_names else ""
+    return f"def _param_func({sig}): pass"
 
 
 class ReorderableDict(dict):
@@ -109,7 +102,7 @@ class ReorderableDict(dict):
         for i, k in enumerate(self.keys()):
             if key == k:
                 return i
-        raise ValueError("%s not found" % key)
+        raise ValueError(f"{key} not found")
 
     def get_key(self, index):
         for i, k in enumerate(self.keys()):
@@ -312,6 +305,4 @@ def rel_to_abs_tuple(target: tuple, namespace: tuple):
 
     shared = nslen - dots + 1
     tg = target[1:]
-    abs = ns[:shared] + tg
-
-    return abs
+    return ns[:shared] + tg

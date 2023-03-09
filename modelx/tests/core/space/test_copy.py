@@ -88,11 +88,7 @@ def test_copy_defined(parent):
     def bar(y):
         return y
 
-    if parent == "model":
-        parent = m
-    else:
-        parent = m.new_space()
-
+    parent = m if parent == "model" else m.new_space()
     bc = b.copy(parent, "BaseCopy", True)
 
     assert "foo" in bc.Child.cells

@@ -14,10 +14,7 @@ def simplemodel():
 
     @defcells
     def fibo(x):
-        if x == 0 or x == 1:
-            return x
-        else:
-            return fibo(x - 1) + fibo(x - 2)
+        return x if x in [0, 1] else fibo(x - 1) + fibo(x - 2)
 
     model.bar = 3
 
@@ -37,7 +34,7 @@ def test_clear_all(make_testmodel_for_clear):
 
 
 def test_parent(simplemodel):
-    assert simplemodel.parent == None
+    assert simplemodel.parent is None
 
 
 def test_autoname_space(simplemodel):
@@ -99,8 +96,8 @@ def test_tracegraph(simplemodel):
         fibo_next1 = get_node(space.fibo._impl, (x + 1,), {})
         fibo_next2 = get_node(space.fibo._impl, (x + 2,), {})
 
-        if x == 0 or x == 1:
-            assert list(get_predec(fibo)) == []
+        if x in [0, 1]:
+            assert not list(get_predec(fibo))
             assert fibo_next2 in get_succ(fibo)
         elif x < 9:
             assert fibo_prev1 in get_predec(fibo)

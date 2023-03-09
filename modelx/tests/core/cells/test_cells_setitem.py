@@ -16,10 +16,7 @@ def setitemsample():
 
     @defcells
     def fibo(x):
-        if x == 0 or x == 1:
-            return x
-        else:
-            return fibo(x - 1) + fibo[x - 2]
+        return x if x in [0, 1] else fibo(x - 1) + fibo[x - 2]
 
     @defcells
     def double(x):

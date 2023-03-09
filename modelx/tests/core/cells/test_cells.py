@@ -71,8 +71,8 @@ def test_clear_formula(sample_space):
     assert set(source) == {1, 2}
 
     del source.formula
-    assert set(source) == set()
-    assert set(dependant) == set()
+    assert not set(source)
+    assert not set(dependant)
 
 
 def test_set_formula(sample_space):

@@ -4,10 +4,7 @@ new_model().new_space()
 
 @defcells
 def lx(x):
-    if x == 0:
-        return 100000
-    else:
-        return lx[x - 1] - dx[x - 1]
+    return 100000 if x == 0 else lx[x - 1] - dx[x - 1]
 
 
 @defcells

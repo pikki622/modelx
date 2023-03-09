@@ -34,11 +34,11 @@ LONG_DESCRIPTION = get_description()
 def get_version(version_tuple):
     # additional handling of a,b,rc tags, this can
     # be simpler depending on your versioning scheme
-    if not isinstance(version_tuple[-1], int):
-        return '.'.join(
-            map(str, version_tuple[:-1])
-        ) + version_tuple[-1]
-    return '.'.join(map(str, version_tuple))
+    return (
+        '.'.join(map(str, version_tuple))
+        if isinstance(version_tuple[-1], int)
+        else '.'.join(map(str, version_tuple[:-1])) + version_tuple[-1]
+    )
 
 # path to the packages __init__ module in project source tree
 init = path.join(

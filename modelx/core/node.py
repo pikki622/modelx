@@ -68,20 +68,13 @@ def node_get_args(node):
 def tuplize_key(obj, key, remove_extra=False):
     """Args"""
 
-    if key.__class__ is tuple:  # Not isinstance(key, tuple) for speed
-        pass
-    else:
+    if key.__class__ is not tuple:
         key = (key,)
 
     if not remove_extra:
         return key
-    else:
-        paramlen = len(obj.formula.parameters)
-        arglen = len(key)
-        if arglen:
-            return key[: min(arglen, paramlen)]
-        else:
-            return key
+    paramlen = len(obj.formula.parameters)
+    return key[: min(arglen, paramlen)] if (arglen := len(key)) else key
 
 
 def _bind_args(obj, args, kwargs):
@@ -98,14 +91,12 @@ def get_node_repr(node):
     name = obj.get_repr(fullname=True, add_params=False)
     params = obj.formula.parameters
 
-    arglist = ", ".join(
-        "%s=%s" % (param, arg) for param, arg in zip(params, key)
-    )
+    arglist = ", ".join(f"{param}={arg}" for param, arg in zip(params, key))
 
     if key in obj.data:
-        return name + "(" + arglist + ")" + "=" + str(obj.data[key])
+        return f"{name}({arglist})={str(obj.data[key])}"
     else:
-        return name + "(" + arglist + ")"
+        return f"{name}({arglist})"
 
 
 class BaseNode:
@@ -167,7 +158,7 @@ class BaseNode:
     def _baseattrs(self):
         """A dict of members expressed in literals"""
 
-        result = {
+        return {
             "type": type(self).__name__,
             "obj": self.obj._baseattrs,
             "args": self.args,
@@ -178,11 +169,9 @@ class BaseNode:
             "repr": self.obj._get_repr(),
         }
 
-        return result
-
     def _get_attrdict(self, extattrs=None, recursive=True):
 
-        result = {
+        return {
             "type": type(self).__name__,
             "obj": self.obj._get_attrdict(extattrs, recursive),
             "args": self.args,
@@ -193,7 +182,6 @@ class BaseNode:
             "repr_parent": self.obj._impl.repr_parent(),
             "repr": self.obj._get_repr(),
         }
-        return result
 
     def __repr__(self):
         raise NotImplementedError
@@ -248,17 +236,15 @@ class ItemNode(BaseNode):
         params = self.obj._impl.formula.parameters
 
         arglist = ", ".join(
-            "%s=%s" % (param, repr(arg)) for param, arg in
-            zip(params, self.args)
+            f"{param}={repr(arg)}" for param, arg in zip(params, self.args)
         )
 
-        if self.has_value():
-            valrepr = repr(self.value)
-            if "\n" in valrepr:
-                valrepr = "\n" + valrepr
-            return name + "(" + arglist + ")" + "=" + valrepr
-        else:
-            return name + "(" + arglist + ")"
+        if not self.has_value():
+            return f"{name}({arglist})"
+        valrepr = repr(self.value)
+        if "\n" in valrepr:
+            valrepr = "\n" + valrepr
+        return f"{name}({arglist})={valrepr}"
 
 
 class ObjectNode(BaseNode):
@@ -309,26 +295,17 @@ class ObjectNode(BaseNode):
 
         name = self.obj._get_repr(fullname=True, add_params=False)
 
-        if not hasattr(self.obj, "formula"):    # for Reference
-            params = None
-        elif self.obj.formula is None:      # for Space
+        if not hasattr(self.obj, "formula") or self.obj.formula is None:    # for Reference
             params = None
         else:
             params = ", ".join(self.obj.parameters)
 
-        if self.has_value():
-            valrepr = repr(self.value)
-            if "\n" in valrepr:
-                valrepr = "\n" + valrepr
-            if params is None:
-                return name + "=" + valrepr
-            else:
-                return name + "(" + params + ")" + "=" + valrepr
-        else:
-            if params is None:
-                return name
-            else:
-                return name + "(" + params + ")"
+        if not self.has_value():
+            return name if params is None else f"{name}({params})"
+        valrepr = repr(self.value)
+        if "\n" in valrepr:
+            valrepr = "\n" + valrepr
+        return f"{name}={valrepr}" if params is None else f"{name}({params})={valrepr}"
 
 
 class ItemFactory:

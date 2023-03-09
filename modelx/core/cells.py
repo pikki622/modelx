@@ -74,7 +74,7 @@ class Cells(Interface, Mapping, Callable, ItemFactory):
         .. versionadded:: 0.16.0
         """
         if isinstance(self._impl, DynamicCellsImpl):
-            raise ValueError("'%s' is dynamic" % self.name)
+            raise ValueError(f"'{self.name}' is dynamic")
         self._impl.spmgr.rename_cells(self._impl, name)
 
     def copy(self, parent, name=None):
@@ -313,13 +313,13 @@ class Cells(Interface, Mapping, Callable, ItemFactory):
     @formula.setter
     def formula(self, formula):
         if isinstance(self._impl, DynamicCellsImpl):
-            raise ValueError("'%s' is dynamic" % self.name)
+            raise ValueError(f"'{self.name}' is dynamic")
         self._impl.spmgr.change_cells_formula(self._impl, formula)
 
     @formula.deleter
     def formula(self):
         if isinstance(self._impl, DynamicCellsImpl):
-            raise ValueError("'%s' is dynamic" % self.name)
+            raise ValueError(f"'{self.name}' is dynamic")
         self._impl.spmgr.del_cells_formula(self._impl)
 
     @property
@@ -497,9 +497,7 @@ class CellsImpl(*_cells_impl_base):
             pass
         elif formula:
             name = Formula(formula).name
-            if is_valid_name(name):
-                pass
-            else:
+            if not is_valid_name(name):
                 name = space.cellsnamer.get_next(space.namespace)
         else:
             name = space.cellsnamer.get_next(space.namespace)
@@ -546,12 +544,12 @@ class CellsImpl(*_cells_impl_base):
 
     def repr_self(self, add_params=True):
         if add_params:
-            return "%s(%s)" % (self.name, ", ".join(self.formula.parameters))
+            return f'{self.name}({", ".join(self.formula.parameters)})'
         else:
             return self.name
 
     def repr_parent(self):
-        return self.parent.repr_parent() + "." + self.parent.repr_self()
+        return f"{self.parent.repr_parent()}.{self.parent.repr_self()}"
 
     def has_node(self, key):
         return key in self.data
@@ -564,7 +562,7 @@ class CellsImpl(*_cells_impl_base):
         if self.is_scalar():
             return self.get_value(())
         else:
-            raise ValueError("%s not a scalar" % self.name)
+            raise ValueError(f"{self.name} not a scalar")
 
     def on_inherit(self, updater, bases):
 
@@ -578,10 +576,7 @@ class CellsImpl(*_cells_impl_base):
 
     @property
     def doc(self):
-        if not self.formula._is_lambda:
-            return self.formula.func.__doc__
-        else:
-            return self._doc
+        return self._doc if self.formula._is_lambda else self.formula.func.__doc__
 
     @property
     def module(self):
@@ -601,7 +596,7 @@ class CellsImpl(*_cells_impl_base):
         if self.has_node(key):
             # Assignment took place inside the cell.
             if value is not None:
-                raise ValueError("Duplicate assignment for %s" % key)
+                raise ValueError(f"Duplicate assignment for {key}")
             else:
                 value = self.data[key]
         else:
@@ -649,7 +644,7 @@ class CellsImpl(*_cells_impl_base):
             if node == self.system.callstack[-1]:
                 self._store_value(key, value)
             else:
-                raise KeyError("Assignment in cells other than %s" % key)
+                raise KeyError(f"Assignment in cells other than {key}")
         else:
             if self.system._recalc_dependents:
                 targets = self.model.tracegraph.get_startnodes_from(node)
@@ -663,9 +658,7 @@ class CellsImpl(*_cells_impl_base):
 
     def _store_value(self, key, value):
 
-        if value is not None:
-            self.data[key] = value
-        elif self.get_property("allow_none"):
+        if value is not None or value is None and self.get_property("allow_none"):
             self.data[key] = value
         else:
             raise NoneReturnedError(get_node_repr((self, key, None)))
@@ -685,20 +678,18 @@ class CellsImpl(*_cells_impl_base):
             self.clear_value_at(key, clear_input)
 
     def clear_value_at(self, key, clear_input=True):
-        if self.has_node(key):
-            if clear_input or (key not in self.input_keys):
-                self.model.clear_with_descs(key_to_node(self, key))
+        if self.has_node(key) and (clear_input or (key not in self.input_keys)):
+            self.model.clear_with_descs(key_to_node(self, key))
 
     # ----------------------------------------------------------------------
     # Pandas I/O
 
     def tuplize_arg_sequence(self, argseq):
 
-        if len(argseq) == 1:
-            if isinstance(argseq[0], Sequence) and len(argseq[0]) == 0:
-                pass  # Empty sequence
-            else:
-                argseq = argseq[0]
+        if len(argseq) == 1 and (
+            not isinstance(argseq[0], Sequence) or len(argseq[0]) != 0
+        ):
+            argseq = argseq[0]
 
         for arg in argseq:
             self.get_value(tuplize_key(self, arg, remove_extra=True))
@@ -724,7 +715,7 @@ class CellsImpl(*_cells_impl_base):
     def check_sanity(self):
         # Check consistency between data elements and nodes in trace graph
         nodes = self.model.tracegraph.get_nodes_with(self)
-        assert set(self.data.keys()) == set(n[KEY] for n in nodes)
+        assert set(self.data.keys()) == {n[KEY] for n in nodes}
         return True
 
 
@@ -800,10 +791,7 @@ class UserCellsImpl(CellsImpl):
         if isinstance(func, NullFormula):
             self.formula = NULL_FORMULA
         else:
-            if isinstance(func, Formula):
-                cls = func.__class__
-            else:
-                cls = Formula
+            cls = func.__class__ if isinstance(func, Formula) else Formula
             self.formula = cls(func, name=self.name)
 
         self.altfunc = BoundFunction(self)
@@ -839,7 +827,5 @@ def shareable_parameters(cells):
             if params[i] != result[i]:
                 return None
 
-        for i in range(len(result), len(params)):
-            result.append(params[i])
-
+        result.extend(params[i] for i in range(len(result), len(params)))
     return result

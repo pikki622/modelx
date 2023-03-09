@@ -62,11 +62,7 @@ def test_new_excel_range(tmp_path, pstr, is_relative, edit_value, save_meth):
     Check data before and after value edit before after saving and reloading
     """
     m = mx.new_model()
-    if pstr == "model":
-        parent = m
-    else:
-        parent = m.new_space()
-
+    parent = m if pstr == "model" else m.new_space()
     parent_name = parent.name
     loc = ("files/testexcel.xlsx"
            if is_relative else tmp_path / "testexcel.xlsx")
@@ -97,7 +93,7 @@ def test_new_excel_range(tmp_path, pstr, is_relative, edit_value, save_meth):
 
     for nth in repeat_:
 
-        model_name = ("model%s" % nth)
+        model_name = f"model{nth}"
         file_loc = (tmp_path / model_name / loc) if is_relative else loc
 
         getattr(m, save_meth)(tmp_path / model_name)
@@ -206,13 +202,9 @@ def test_shared_data(tmp_path, parent, save_meth):
 
     for i in range(2):
 
-        m = mx.new_model("SharedDataTest" + str(i))
+        m = mx.new_model(f"SharedDataTest{str(i)}")
 
-        if parent == "model":
-            p = m
-        else:
-            p = m.new_space("SharedDataTest")
-
+        p = m if parent == "model" else m.new_space("SharedDataTest")
         parent_name = p.name
 
         kwargs = testargs[i].copy()
@@ -231,15 +223,15 @@ def test_shared_data(tmp_path, parent, save_meth):
         for key, val in expected.items():
             expected[key] = 2 * val
 
-        getattr(m, save_meth)(tmp_path / ("model" + str(i)))
+        getattr(m, save_meth)(tmp_path / f"model{str(i)}")
         assert xlr == expected
 
     for i in range(2):
-        m = mx.get_models()["SharedDataTest" + str(i)]
+        m = mx.get_models()[f"SharedDataTest{str(i)}"]
         m.close()
 
     for i in range(2):
-        m2 = mx.read_model(tmp_path / ("model" + str(i)))
+        m2 = mx.read_model(tmp_path / f"model{str(i)}")
         p2 = m2 if parent == "model" else m2.spaces["SharedDataTest"]
         kwargs = testargs[i]
         name = kwargs["name"]
@@ -249,7 +241,7 @@ def test_shared_data(tmp_path, parent, save_meth):
         assert getattr(p2, name) == expected
 
     for i in range(2):
-        m = mx.get_models()["SharedDataTest" + str(i)]
+        m = mx.get_models()[f"SharedDataTest{str(i)}"]
         m.close()
 
     assert not mx.core.mxsys._check_sanity()
@@ -331,12 +323,12 @@ def test_range_conflict_error(tmp_path, parent, is_relative, erroneous):
     if erroneous:
         with pytest.raises(ValueError):
             s.new_excel_range(**kwargs)
-        del m_or_s.table1
     else:
-        del m_or_s.table1
         xlr = s.new_excel_range(**kwargs)
         assert set(xlr.values()) == set(expected.values())
         del s.table1
+
+    del m_or_s.table1
 
 
 def test_iospecs(tmp_path):

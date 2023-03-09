@@ -92,7 +92,7 @@ def add_stateattrs(cls):
 
     no_state = []
     for c in cls.__mro__:
-        attr = "_" + c.__name__ + "__no_state"
+        attr = f"_{c.__name__}__no_state"
         if hasattr(c, attr):
             no_state.extend(getattr(c, attr))
 
@@ -115,7 +115,7 @@ def add_statemethod(cls):
         for key, value in state.items():
             setattr(self, key, value)
         for base in self.__class__.mro():
-            name = "_" + base.__name__ + "__setstate"
+            name = f"_{base.__name__}__setstate"
             if hasattr(cls, name):
                 getattr(cls, name)(self, state)
 
@@ -127,14 +127,11 @@ def add_statemethod(cls):
 
 
 def is_mixin(cls):
-    return hasattr(cls, "_" + cls.__name__ + "__mixin_slots")
+    return hasattr(cls, f"_{cls.__name__}__mixin_slots")
 
 
 def is_concrete(cls):
-    if hasattr(cls, "__slots__") and not is_mixin(cls):
-        return True
-    else:
-        return False
+    return bool(hasattr(cls, "__slots__") and not is_mixin(cls))
 
 
 def get_mixin_slots(*mixins):
@@ -180,9 +177,11 @@ def get_mixin_slots(*mixins):
         else:
             raise RuntimeError("must not happen")
 
-    return tuple(attr
-                 for b in mixin_slots
-                 for attr in getattr(b, "_" + b.__name__ + "__mixin_slots"))
+    return tuple(
+        attr
+        for b in mixin_slots
+        for attr in getattr(b, f"_{b.__name__}__mixin_slots")
+    )
 
 
 class BaseImpl:
@@ -214,11 +213,7 @@ class Impl(BaseImpl):
 
     def __init__(self, system, parent, name, interface=None, doc=None):
 
-        if self.interface_cls:
-            self.interface = self.interface_cls(self)
-        else:
-            self.interface = interface
-
+        self.interface = self.interface_cls(self) if self.interface_cls else interface
         self.system = system
         self.parent = parent
         self.model = parent.model if parent else self
@@ -229,10 +224,7 @@ class Impl(BaseImpl):
 
     def get_property(self, name):
         prop = getattr(self, name)
-        if prop is None:
-            return self.parent.get_property(name)
-        else:
-            return prop
+        return self.parent.get_property(name) if prop is None else prop
 
     def update_lazyevals(self):
         """Update all LazyEvals in self
@@ -250,19 +242,14 @@ class Impl(BaseImpl):
 
     def get_fullname(self, omit_model=False):
 
-        if self.parent:
-            result = self.parent.get_fullname(False) + "." + self.name
-            if omit_model:
-                separated = result.split(".")
-                separated.pop(0)
-                return ".".join(separated)
-            else:
-                return result
-        else:
-            if omit_model:
-                return ""
-            else:
-                return self.name
+        if not self.parent:
+            return "" if omit_model else self.name
+        result = f"{self.parent.get_fullname(False)}.{self.name}"
+        if not omit_model:
+            return result
+        separated = result.split(".")
+        separated.pop(0)
+        return ".".join(separated)
 
     def is_model(self):
         return self.parent is None
@@ -308,7 +295,7 @@ class Impl(BaseImpl):
         if self.is_model():
             return self.get_fullname()
         else:
-            return self.parent.evalrepr + "." + self.name
+            return f"{self.parent.evalrepr}.{self.name}"
 
     def repr_self(self, add_params=True):
         raise NotImplementedError
@@ -319,7 +306,7 @@ class Impl(BaseImpl):
     def get_repr(self, fullname=False, add_params=True):
 
         if fullname and not self.is_model():
-            return self.repr_parent() + "." + self.repr_self(add_params)
+            return f"{self.repr_parent()}.{self.repr_self(add_params)}"
         else:
             return self.repr_self(add_params)
 
@@ -338,10 +325,9 @@ class Derivable:
     def set_defined(self):
         if not self._is_derived:
             return
-        else:
-            self._is_derived = False
-            if not self.parent.is_model() and self.parent.is_derived():
-                self.parent.set_defined()
+        self._is_derived = False
+        if not self.parent.is_model() and self.parent.is_derived():
+            self.parent.set_defined()
 
     def is_defined(self):
         return not self._is_derived
@@ -395,17 +381,17 @@ class Interface:
 
     def __new__(cls, _impl):
 
-        if isinstance(_impl, Impl):
-            if not hasattr(_impl, "interface"):
-                self = object.__new__(cls)
-                object.__setattr__(self, "_impl", _impl)
-                return self
-            else:
-                return _impl.interface
-        elif isinstance(_impl, NullImpl):
+        if (
+            isinstance(_impl, Impl)
+            and not hasattr(_impl, "interface")
+            or not isinstance(_impl, Impl)
+            and isinstance(_impl, NullImpl)
+        ):
             self = object.__new__(cls)
             object.__setattr__(self, "_impl", _impl)
             return self
+        elif isinstance(_impl, Impl):
+            return _impl.interface
         else:
             raise ValueError("Invalid direct constructor call.")
 
@@ -419,12 +405,9 @@ class Interface:
         try:
             obj = getattr(self, parts.pop(0))
         except AttributeError:
-            raise NameError("'%s' not found" % name)
+            raise NameError(f"'{name}' not found")
 
-        if parts:
-            return obj._get_object(".".join(parts), as_proxy)
-        else:
-            return obj
+        return obj._get_object(".".join(parts), as_proxy) if parts else obj
 
     @property
     def name(self):
@@ -450,10 +433,7 @@ class Interface:
         that contains the space.
         """
 
-        if self._impl.parent is None:
-            return None
-        else:
-            return self._impl.parent.interface
+        return None if self._impl.parent is None else self._impl.parent.interface
 
     @property
     def model(self):
@@ -511,13 +491,12 @@ class Interface:
     def __repr__(self):
         type_ = self.__class__.__name__
 
-        if not self._is_valid():
-            return "<%s null object>" % type_
-
-        else:
-            return "<%s %s>" % (type_,
-                                self._impl.get_repr(
-                                    fullname=True, add_params=True))
+        return (
+            "<%s %s>"
+            % (type_, self._impl.get_repr(fullname=True, add_params=True))
+            if self._is_valid()
+            else f"<{type_} null object>"
+        )
 
     def __getnewargs__(self):
         return (self._impl,)
@@ -529,16 +508,14 @@ class Interface:
         object.__setattr__(self, "_impl", state)
 
     def __reduce__(self):
-        if self._is_valid() and self._impl.system.serializing:
-
-            if self._impl.system.serializing.version == 2:
-                return self._reduce_serialize_2()
-            elif self._impl.system.serializing.version in (3, 4, 5):
-                return self._reduce_serialize_3()
-            else:
-                raise ValueError("invalid serializer version")
-        else:
+        if not self._is_valid() or not self._impl.system.serializing:
             return object.__reduce__(self)
+        if self._impl.system.serializing.version == 2:
+            return self._reduce_serialize_2()
+        elif self._impl.system.serializing.version in (3, 4, 5):
+            return self._reduce_serialize_3()
+        else:
+            raise ValueError("invalid serializer version")
 
     def _reduce_serialize_2(self):
 
@@ -555,12 +532,7 @@ class Interface:
     def _reduce_serialize_3(self):
 
         model = self._impl.system.serializing.model
-        if model is self.model:
-            # Replace model name with empty string
-            idtuple = ("",) + self._idtuple[1:]
-        else:
-            idtuple = self._idtuple
-
+        idtuple = ("",) + self._idtuple[1:] if model is self.model else self._idtuple
         return self._impl.system._get_object_from_idtuple_reduce, (idtuple,)
 
     def set_property(self, name: str, value):
@@ -605,16 +577,14 @@ class Interface:
     def _baseattrs(self):
         """A dict of members expressed in literals"""
 
-        result = {
+        return {
             "type": type(self).__name__,
             "id": id(self._impl),
             "name": self.name,
             "fullname": self.fullname,
             "repr": self._get_repr(),
-            "namedid": self._idstr
+            "namedid": self._idstr,
         }
-
-        return result
 
     def _to_attrdict(self, attrs=None):
         """Get extra attributes"""
@@ -749,8 +719,8 @@ class LazyEval:
         is_fresh = self.is_fresh
         if not is_fresh:
             self.fresh
-        args = self.update_methods[method](self, *args)
-        if is_fresh:    # if not fresh, all observers are not fresh too
+        if is_fresh:# if not fresh, all observers are not fresh too
+            args = self.update_methods[method](self, *args)
             for observer in self.observers:
                 if observer.is_fresh:
                     observer.on_update(method, args)
@@ -961,7 +931,7 @@ class InterfaceMixin:
     __no_state = ("_interfaces", "interfaces")
 
     def __init__(self, map_class):
-        self._interfaces = dict()
+        self._interfaces = {}
         self.map_class = map_class
         self._set_interfaces(map_class)
 
@@ -984,7 +954,7 @@ class InterfaceMixin:
             del self._interfaces[name]
 
     def __setstate(self, state):
-        self._interfaces = dict()
+        self._interfaces = {}
         self._set_interfaces(self.map_class)
 
     def _rename_item(self, old_name, new_name):
@@ -1057,23 +1027,18 @@ class ImplChainMap(*bases):
         return old_name, new_name
 
     def _sort(self, map_, sorted_keys):
-        if isinstance(map_, (LazyEvalDict, LazyEvalChainMap)):
-            assert any(map_ is m for m in self.maps)
-
-            if sorted_keys is None:
-                prev_keys = map_.keys()
-            else:
-                prev_keys = sorted_keys
-
-            # Filter out overwritten items
-            keys = []
-            for name in prev_keys:
-                m = next(m for m in self.maps if name in m)
-                if m is map_:
-                    keys.append(name)
-        else:
+        if not isinstance(map_, (LazyEvalDict, LazyEvalChainMap)):
             raise RuntimeError("must not happen")
 
+        assert any(map_ is m for m in self.maps)
+
+        prev_keys = map_.keys() if sorted_keys is None else sorted_keys
+        # Filter out overwritten items
+        keys = []
+        for name in prev_keys:
+            m = next(m for m in self.maps if name in m)
+            if m is map_:
+                keys.append(name)
         InterfaceMixin._sort(self, keys)
         return (self, keys)
 
@@ -1141,7 +1106,7 @@ class BaseView(Mapping):
                 if name[0] != "_"
             }
         except:
-            raise RuntimeError("%s literadict raised an error" % self)
+            raise RuntimeError(f"{self} literadict raised an error")
 
         return result
 
@@ -1156,7 +1121,7 @@ class BaseView(Mapping):
                 for name, item in self.items()
             }
         except:
-            raise RuntimeError("%s literadict raised an error" % self)
+            raise RuntimeError(f"{self} literadict raised an error")
 
         return result
 
@@ -1169,16 +1134,18 @@ class BaseView(Mapping):
                 name: item._to_attrdict(attrs) for name, item in self.items()
             }
         except:
-            raise RuntimeError("%s literadict raised an error" % self)
+            raise RuntimeError(f"{self} literadict raised an error")
 
         return result
 
     def _get_attrdict(self, extattrs=None, recursive=True):
         """Get extra attributes"""
-        result = {"type": type(self).__name__}
-        result["items"] = {
-            name: item._get_attrdict(extattrs, recursive)
-            for name, item in self.items()
+        result = {
+            "type": type(self).__name__,
+            "items": {
+                name: item._get_attrdict(extattrs, recursive)
+                for name, item in self.items()
+            },
         }
         # To make it possible to detect order change by comparison operation
         result["keys"] = list(self.keys())
@@ -1188,7 +1155,7 @@ class BaseView(Mapping):
 
 def _map_repr(self):
     result = [",\n "] * (len(self) * 2 - 1)
-    result[0::2] = list(self)
+    result[::2] = list(self)
     return "{" + "".join(result) + "}"
 
 
@@ -1216,10 +1183,7 @@ class SelectedView(BaseView):
 
     def _set_keys(self, keys=None):
 
-        if keys is None:
-            self.__keys = None
-        else:
-            self.__keys = list(keys)
+        self.__keys = None if keys is None else list(keys)
 
     def __len__(self):
         return len(list(iter(self)))
@@ -1230,10 +1194,7 @@ class SelectedView(BaseView):
                 if key in self._data:
                     yield key
 
-        if self.__keys is None:
-            return BaseView.__iter__(self)
-        else:
-            return newiter()
+        return BaseView.__iter__(self) if self.__keys is None else newiter()
 
     def __contains__(self, key):
         return key in iter(self)

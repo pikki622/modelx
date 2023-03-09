@@ -17,12 +17,9 @@ def reorder_list(source, targetorder):
             i0 = i
             j0 = source.index(targetorder[i0])
             j = j0 + 1
-            while j < len(source):
-                if source[j] == targetorder[j - j0 + i0]:
-                    j += 1
-                    continue
-                else:
-                    break
+            while j < len(source) and source[j] == targetorder[j - j0 + i0]:
+                j += 1
+                continue
             move_elements(source, i0, j0, j - j0)
             i += j - j0
 

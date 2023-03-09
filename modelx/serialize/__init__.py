@@ -20,8 +20,7 @@ DEFAULT_MAX_BACKUPS = 3
 
 
 def _get_serializer(version):
-    return importlib.import_module(
-        ".serializer_%s" % version, "modelx.serialize")
+    return importlib.import_module(f".serializer_{version}", "modelx.serialize")
 
 
 def _rename_path(path, new_path, obj):
@@ -58,7 +57,7 @@ def _increment_backups(
         model, base_path: pathlib.Path,
         max_backups=DEFAULT_MAX_BACKUPS, nth=0):
 
-    postfix = "_BAK" + str(nth) if nth else ""
+    postfix = f"_BAK{str(nth)}" if nth else ""
     backup_path = pathlib.Path(str(base_path) + postfix)
     if backup_path.exists():
         if nth == max_backups:
@@ -67,10 +66,10 @@ def _increment_backups(
             elif backup_path.is_file():
                 backup_path.unlink()
             else:
-                raise ValueError("cannot remove '%s'" % str(backup_path))
+                raise ValueError(f"cannot remove '{str(backup_path)}'")
         else:
             _increment_backups(model, base_path, max_backups, nth + 1)
-            next_backup = pathlib.Path(str(base_path) + "_BAK" + str(nth + 1))
+            next_backup = pathlib.Path(f"{str(base_path)}_BAK{str(nth + 1)}")
             backup_path.rename(next_backup)
             _rename_path(backup_path, next_backup, model)
 
@@ -83,11 +82,8 @@ def _get_model_metadata(model_path):
             model_path / "_system.json",
             "t"
         )
-    except FileNotFoundError:
+    except (FileNotFoundError, KeyError):
         return None
-    except KeyError:
-        return None
-
     return params
 
 
@@ -124,9 +120,7 @@ def read_model(system, model_path, name=None):
 
     kwargs = {"name": name} if name else {}
     path = pathlib.Path(model_path)
-    params = _get_model_metadata(path)
-
-    if params:
+    if params := _get_model_metadata(path):
         serializer = _get_serializer(params["serializer_version"])
         if "modelx_version" in params:
             kwargs["modelx_version"] = tuple(params["modelx_version"])

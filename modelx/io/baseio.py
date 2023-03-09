@@ -24,9 +24,7 @@ def is_in_root(path: pathlib.Path):
         item = split.pop(0)
         if item == "..":
             level -= 1
-        elif item == ".":
-            pass
-        else:
+        elif item != ".":
             level += 1
         if level < 0:
             return False
@@ -152,7 +150,7 @@ class IOManager:
         self.serializing = None     # Set from external
 
     def _check_sanity(self):
-        assert len(self.ios) == len(set(id(v) for v in self.ios.values()))
+        assert len(self.ios) == len({id(v) for v in self.ios.values()})
         for a_io in self.ios.values():
             a_io._check_sanity()
 
@@ -164,10 +162,7 @@ class IOManager:
                 if group == io_group}
 
     def _get_io_key(self, io_group, path):
-        if path.is_absolute():
-            return None, path
-        else:
-            return io_group, path
+        return (None, path) if path.is_absolute() else (io_group, path)
 
     def _new_io(self, io_group, path, cls, load_from, **kwargs):
         a_io = cls(path, self, load_from, **kwargs)
@@ -181,8 +176,7 @@ class IOManager:
         if io_.specs:
             raise RuntimeError("specs must be deleted beforehand")
 
-        key = next((k for k, v in self.ios.items() if v is io_), None)
-        if key:
+        if key := next((k for k, v in self.ios.items() if v is io_), None):
             del self.ios[key]
 
     def restore_io(self, io_group, io_):
@@ -193,8 +187,7 @@ class IOManager:
             self.ios[self._get_io_key(io_group, io_.path)] = io_
 
     def get_or_create_io(self, io_group, path, cls, load_from=None, **kwargs):
-        a_io = self._get_io(io_group, path)
-        if a_io:
+        if a_io := self._get_io(io_group, path):
             return a_io
         else:
             return self._new_io(io_group, path, cls, load_from, **kwargs)
@@ -247,9 +240,7 @@ class IOManager:
             spec.io._on_update_value(value, kwargs)
             spec._on_update_value(value, kwargs)
         else:
-            raise ValueError(
-                "%s does not allow to replace its value" % repr(spec)
-            )
+            raise ValueError(f"{repr(spec)} does not allow to replace its value")
 
     def update_spec(self, spec, **kwargs):
         if spec.io._can_update_spec(spec, kwargs):
@@ -262,25 +253,19 @@ class IOManager:
         group, path_old = key_old = self.ios.inverse[io_]
         if path == path_old:
             return
-        else:
-            key = self._get_io_key(group, path)
-            if key in self.ios:
-                raise ValueError("cannot change path")
-            else:
-                del self.ios[key_old]
-                io_._on_update_path(path)
-                self.ios[key] = io_
+        key = self._get_io_key(group, path)
+        if key in self.ios:
+            raise ValueError("cannot change path")
+        del self.ios[key_old]
+        io_._on_update_path(path)
+        self.ios[key] = io_
 
     def write_ios(self, root):
         for a_io in self.ios.values():
             self.write_io(a_io, root)
 
     def write_io(self, io_, root):
-        if not io_.path.is_absolute():
-            path = root.joinpath(io_.path)
-        else:
-            path = io_.path
-
+        path = io_.path if io_.path.is_absolute() else root.joinpath(io_.path)
         path.parent.mkdir(parents=True, exist_ok=True)
         io_._on_write(path)
 
@@ -445,11 +430,7 @@ class BaseIOSpec:
     def __setstate__(self, state):
         self._manager = state["manager"]
         self._io = state["_io"] if "_io" in state else state["_data"]  # renamed from v0.20.0
-        if "is_hidden" in state:
-            self._is_hidden = state["is_hidden"]
-        else:
-            # For backward compatibility with v0.12
-            self._is_hidden = False
+        self._is_hidden = state["is_hidden"] if "is_hidden" in state else False
         if self._manager.serializing is True:
             self._on_unserialize(state)
             self._manager.add_spec(self._io, self)
@@ -460,12 +441,11 @@ class BaseIOSpec:
 
     def _get_attrdict(self, extattrs=None, recursive=True):
 
-        result = {
+        return {
             "type": type(self).__name__,
             "path": str(self._io.path),
             "load_from": str(self._io.load_from),
-            "value": self.value
+            "value": self.value,
         }
-        return result
 
 

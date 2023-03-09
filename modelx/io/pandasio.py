@@ -118,10 +118,7 @@ class PandasData(BaseIOSpec):
         self._init_spec()
 
     def _can_update_other(self, other, sheet):
-        if other is self or sheet != self._sheet:
-            return True
-        else:
-            return False
+        return other is self or sheet != self._sheet
 
     def _on_update(self, sheet):
         self._sheet = sheet
@@ -135,23 +132,22 @@ class PandasData(BaseIOSpec):
         self.name = data.name if isinstance(data, pd.Series) else None
 
         self._read_args = {}
-        if self._io.file_type == "excel" or self._io.file_type == "csv":
-            if isinstance(data, pd.DataFrame) and data.columns.nlevels > 1:
-                self._read_args["header"] = list(range(data.columns.nlevels))
-            if data.index.nlevels > 1:
-                self._read_args["index_col"] = list(range(data.index.nlevels))
-            else:
-                self._read_args["index_col"] = 0
-            if isinstance(data, pd.Series):
-                self._squeeze = True
-            if self._io.file_type == "excel":
-                if (len(self._io.path.suffix[1:]) > 3
-                        and self._io.path.suffix[1:4] == "xls"):
-                    self._read_args["engine"] = "openpyxl"
-                if self._sheet:
-                    self._read_args["sheet_name"] = self._sheet
-        else:
+        if self._io.file_type not in ["excel", "csv"]:
             raise ValueError("Pandas IO type not supported")
+        if isinstance(data, pd.DataFrame) and data.columns.nlevels > 1:
+            self._read_args["header"] = list(range(data.columns.nlevels))
+        if data.index.nlevels > 1:
+            self._read_args["index_col"] = list(range(data.index.nlevels))
+        else:
+            self._read_args["index_col"] = 0
+        if isinstance(data, pd.Series):
+            self._squeeze = True
+        if self._io.file_type == "excel":
+            if (len(self._io.path.suffix[1:]) > 3
+                    and self._io.path.suffix[1:4] == "xls"):
+                self._read_args["engine"] = "openpyxl"
+            if self._sheet:
+                self._read_args["sheet_name"] = self._sheet
 
     def _on_pickle(self, state):
         state.update({
@@ -165,9 +161,8 @@ class PandasData(BaseIOSpec):
 
     def _on_unpickle(self, state):
         # For mx < 0.20
-        if "filetype" in state:
-            if not hasattr(self._io, "file_type"):
-                self._io.file_type = state["filetype"]
+        if "filetype" in state and not hasattr(self._io, "file_type"):
+            self._io.file_type = state["filetype"]
 
         self._value = state["value"]
         self._read_args = state["read_args"]
@@ -210,7 +205,7 @@ class PandasData(BaseIOSpec):
             if self._sheet is None or other.sheet is None:
                 return False
             else:
-                return not self._sheet == other.sheet
+                return self._sheet != other.sheet
         else:
             raise RuntimeError("must not happen")
 
@@ -266,7 +261,7 @@ class PandasData(BaseIOSpec):
         ) % (repr(str(self._io.path.as_posix())), repr(self._io.file_type))
 
         if self._io.file_type == "excel" and self._sheet:
-            return res + (" sheet=%s>" % repr(self._sheet))
+            return res + f" sheet={repr(self._sheet)}>"
         else:
             return res + ">"
 

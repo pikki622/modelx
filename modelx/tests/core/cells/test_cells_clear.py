@@ -9,10 +9,7 @@ def clearsample():
 
     @mx.defcells
     def fibo(x):
-        if x == 0 or x == 1:
-            return x
-        else:
-            return fibo(x - 1) + fibo[x - 2]
+        return x if x in [0, 1] else fibo(x - 1) + fibo[x - 2]
 
     @mx.defcells
     def no_param():
@@ -103,6 +100,6 @@ def test_clear_other(clearsample):
     assert set(space.source) == {1, 2}
 
     space.source.clear_at(1)
-    assert set(space.source) == set()
-    assert set(space.dependant) == set()
+    assert not set(space.source)
+    assert not set(space.dependant)
 

@@ -87,11 +87,10 @@ def test_read_write_model(testmodel, tmp_path, name, version, as_method,
             kwargs = dict(compression=zipfile.ZIP_STORED, version=version)
         else:
             kwargs = {}
-        getattr(mx, write_method + "_model")(
-            testmodel, path_, **kwargs)
+        getattr(mx, f"{write_method}_model")(testmodel, path_, **kwargs)
     m = read_model(path_, name=name)
 
-    assert m.name == (name if name else "TestModel")
+    assert m.name == (name or "TestModel")
     if name is None:
         testutil.compare_model(testmodel, m)
 

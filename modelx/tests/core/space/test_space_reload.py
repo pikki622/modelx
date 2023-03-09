@@ -31,9 +31,9 @@ def test_space_reload(reloadtest):
     import shutil
 
     model, samplename, tempdir = reloadtest
-    sample = str(tempdir.joinpath(samplename + ".py"))
+    sample = str(tempdir.joinpath(f"{samplename}.py"))
 
-    shutil.copy(str(datadir.joinpath(samplename + "_before.py")), sample)
+    shutil.copy(str(datadir.joinpath(f"{samplename}_before.py")), sample)
     # import reloadtest as src
     import importlib
 
@@ -43,7 +43,7 @@ def test_space_reload(reloadtest):
     assert space.foo(3) == 0
     assert "baz" in space.cells
 
-    shutil.copy(str(datadir.joinpath(samplename + "_after.py")), sample)
+    shutil.copy(str(datadir.joinpath(f"{samplename}_after.py")), sample)
     space.reload()
 
     assert space.foo(3) == 1

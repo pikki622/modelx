@@ -13,10 +13,7 @@ ref_values = [
 ]
 
 
-@pytest.mark.parametrize(
-    "parent_type, name, obj, literal",
-    list([p[0], *p[1]] for p in itertools.product(['model', 'space'], ref_values))
-)
+@pytest.mark.parametrize("parent_type, name, obj, literal", [[p[0], *p[1]] for p in itertools.product(['model', 'space'], ref_values)])
 def test_serialize_primitive(parent_type, name, obj, literal, tmp_path):
 
     m = mx.new_model()
@@ -24,11 +21,11 @@ def test_serialize_primitive(parent_type, name, obj, literal, tmp_path):
     setattr(parent, name, obj)
     m.write(tmp_path / 'model',)
 
-    line = name + " = " + literal
+    line = f"{name} = {literal}"
     file = tmp_path / 'model' / ('__init__.py' if parent_type == 'model' else 'Space1/__init__.py')
 
     with open(file, "r") as fp:
-        assert any(l == line for l in fp)
+        assert line in fp
 
     m2 = mx.read_model(tmp_path / 'model')
     parent = m2 if parent_type == 'model' else getattr(m2, 'Space1')

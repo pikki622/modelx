@@ -44,15 +44,15 @@ def test_le(constcells):
 def test_gt(constcells):
     assert not constcells.bar > constcells.baz
     assert constcells.baz > constcells.bar
-    assert not 3 > constcells.baz
-    assert not constcells.bar > 4
+    assert constcells.baz >= 3
+    assert constcells.bar <= 4
 
 
 def test_ge(constcells):
     assert not constcells.bar >= constcells.baz
     assert constcells.baz >= constcells.bar
-    assert not 3 >= constcells.baz
-    assert not constcells.bar >= 4
+    assert constcells.baz > 3
+    assert constcells.bar < 4
 
 
 # --------------------------------------------------------------------------

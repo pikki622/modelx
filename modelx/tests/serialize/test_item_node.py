@@ -16,10 +16,7 @@ def model_for_item_node_test(tmp_path):
 
     @mx.defcells
     def Cells2(x):
-        if x > 0:
-            return Cells2(x-1)
-        else:
-            return Cells1()
+        return Cells2(x-1) if x > 0 else Cells1()
 
     @mx.defcells
     def Cells3(x):

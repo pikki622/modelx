@@ -37,11 +37,7 @@ def test_dynmodel(dynmodel, tmp_path, write_method, rename):
 
     path_ = tmp_path / "testdir"
     getattr(mx, write_method)(dynmodel, path_)
-    if rename:
-        m = mx.read_model(path_, name="renamed")
-    else:
-        m = mx.read_model(path_)
-
+    m = mx.read_model(path_, name="renamed") if rename else mx.read_model(path_)
     assert m.SpaceA[0] is m.SpaceB.RefSpaceA
     assert m.SpaceA[1].foo[2] == 3
 
@@ -52,7 +48,7 @@ class Tot_func:
         self.space = space
 
     def Sum(self, *args):
-        return sum([self.space(id).cells[self.cell](*args) for id in range(0, 10)])
+        return sum(self.space(id).cells[self.cell](*args) for id in range(10))
 
 
 def s_arg(id):
@@ -99,11 +95,7 @@ def test_dyntotal(dyntotal, tmp_path, write_method, rename):
     path_ = tmp_path / "testdir"
     getattr(mx, write_method)(dyntotal, path_)
     dyntotal.close()
-    if rename:
-        m = mx.read_model(path_, name="renamed")
-    else:
-        m = mx.read_model(path_)
-
+    m = mx.read_model(path_, name="renamed") if rename else mx.read_model(path_)
     assert m.s(-1).a(2) == 2 * 10
     assert m.s(0).a(2) == 2
     assert m.s(-1).b(2, 3) == 2 * 3 * 10

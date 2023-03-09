@@ -55,13 +55,13 @@ class BaseParent(Interface):
         and the space is returned.
         """
         if name is None:
-            if self._impl.model.currentspace:
-                return self._impl.model.currentspace.interface
-            else:
-                return None
-        else:
-            self._impl.model.currentspace = self._impl.spaces[name]
-            return self.cur_space()
+            return (
+                self._impl.model.currentspace.interface
+                if self._impl.model.currentspace
+                else None
+            )
+        self._impl.model.currentspace = self._impl.spaces[name]
+        return self.cur_space()
 
     # ----------------------------------------------------------------------
     # Override base class methods
@@ -93,13 +93,12 @@ class EditableParent(BaseParent):
     def __setattr__(self, name, value):
         if hasattr(type(self), name):
             attr = getattr(type(self), name)
-            if isinstance(attr, property):
-                if hasattr(attr, 'fset'):
-                    attr.fset(self, value)
-                else:
-                    raise AttributeError("%s is read-only" % name)
+            if not isinstance(attr, property):
+                raise AttributeError(f"{name} is not a property")
+            if hasattr(attr, 'fset'):
+                attr.fset(self, value)
             else:
-                raise AttributeError("%s is not a property" % name)
+                raise AttributeError(f"{name} is read-only")
         elif name in self.properties:
             object.__setattr__(self, name, value)
         else:
@@ -142,13 +141,12 @@ class EditableParent(BaseParent):
             The new child space created from the module.
         """
         if module is None:
-            if "module_" in params:
-                warnings.warn(
-                    "Parameter 'module_' is deprecated. Use 'module' instead.")
-                module = params.pop("module_")
-            else:
+            if "module_" not in params:
                 raise ValueError("no module specified")
 
+            warnings.warn(
+                "Parameter 'module_' is deprecated. Use 'module' instead.")
+            module = params.pop("module_")
         if "bases" in params:
             params["bases"] = get_impls(params["bases"])
 
@@ -644,13 +642,12 @@ class EditableParent(BaseParent):
 
         """
         if file_type is None:
-            if filetype is not None:
-                warnings.warn(
-                    "'filetype' parameter is deprecated. Use 'file_type' instead.")
-                file_type = filetype
-            else:
+            if filetype is None:
                 raise ValueError("file_type is mssing")
 
+            warnings.warn(
+                "'filetype' parameter is deprecated. Use 'file_type' instead.")
+            file_type = filetype
         return self._impl.new_pandas(
             name, path, data, file_type, sheet)
 
@@ -812,7 +809,7 @@ class EditableParentImpl(BaseParentImpl):
 
         if recursive and hasattr(module, "_spaces"):
             for name in module._spaces:
-                submodule = module.__name__ + "." + name
+                submodule = f"{module.__name__}.{name}"
                 space.new_space_from_module(module=submodule, recursive=True)
 
         return space
@@ -967,7 +964,7 @@ class EditableParentImpl(BaseParentImpl):
             self.set_attr(name, result)
         except (ValueError, KeyError, AttributeError):
             self.system.iomanager.del_spec(result)
-            raise KeyError("cannot assign '%s'" % name)
+            raise KeyError(f"cannot assign '{name}'")
 
         return result
 
@@ -985,7 +982,7 @@ class EditableParentImpl(BaseParentImpl):
             self.set_attr(name, data)
         except (ValueError, KeyError, AttributeError):
             self.system.iomanager.del_spec(spec)
-            raise KeyError("cannot assign '%s'" % name)
+            raise KeyError(f"cannot assign '{name}'")
 
         return data
 
@@ -1005,7 +1002,7 @@ class EditableParentImpl(BaseParentImpl):
             self.set_attr(name, spec.value)
         except (ValueError, KeyError, AttributeError):
             self.system.iomanager.del_spec(spec)
-            raise KeyError("cannot assign '%s'" % name)
+            raise KeyError(f"cannot assign '{name}'")
 
         return spec.value
 

@@ -28,7 +28,7 @@ def test_add_remove_bases_lv2ly2(new_member):
     model = mx.new_model()
     A = model.new_space("A")
     B = model.new_space("B")
-    C = getattr(B, "new_" + new_member)("C")
+    C = getattr(B, f"new_{new_member}")("C")
 
     for _ in range(2):
         A.add_bases(B)
@@ -63,7 +63,7 @@ def test_new_del_basemember_lv2ly2(new_member):
     A.add_bases(B)
 
     for _ in range(2):
-        C = getattr(B, "new_" + new_member)("C")
+        C = getattr(B, f"new_{new_member}")("C")
         assert "C" in B
         assert "C" in A
         del getattr(B, new_members)["C"]
@@ -172,7 +172,7 @@ def test_add_remove_bases(new_member):
     B = model.new_space("B")
     C = model.new_space("C")
 
-    getattr(C.new_space("D"), "new_" + new_member)("E")
+    getattr(C.new_space("D"), f"new_{new_member}")("E")
 
     for _ in repr(2):
 
@@ -186,8 +186,8 @@ def test_add_remove_bases(new_member):
 
         A.remove_bases(B)
         B.remove_bases(C)
-        assert not "D" in A.spaces
-        assert not "D" in B.spaces
+        assert "D" not in A.spaces
+        assert "D" not in B.spaces
 
     model._impl._check_sanity()
     model.close()
@@ -231,7 +231,7 @@ def test_new_del_basemember_lv3ly3(new_member):
         D = C.new_space("D")
         assert "D" in B
         assert "D" in A
-        E = getattr(D, "new_" + new_member)("E")
+        E = getattr(D, f"new_{new_member}")("E")
         assert "E" in getattr(B.spaces["D"], new_members)
         assert "E" in getattr(A.spaces["D"], new_members)
 
@@ -269,7 +269,7 @@ def test_new_del_basemember_lv32ly3(new_member):
     G.add_bases(F)
 
     for _ in range(2):
-        getattr(AB, "new_" + new_member)("E")
+        getattr(AB, f"new_{new_member}")("E")
         assert "E" in getattr(CB, new_members)
         assert "E" in getattr(D, new_members)
         assert "E" in getattr(G.spaces["D"], new_members)

@@ -55,11 +55,10 @@ class NonThreadedExecutor:
             value = cells.data[key]
             if self.callstack:
                 cells.model.tracegraph.add_edge(node, self.callstack[-1])
+        elif self.is_executing:
+            value = self._eval_formula(node)
         else:
-            if self.is_executing:
-                value = self._eval_formula(node)
-            else:
-                value = self._start_exec(node)
+            value = self._start_exec(node)
 
         return value
 
@@ -96,30 +95,27 @@ class NonThreadedExecutor:
         assert not self.callstack.counter
         assert not self.refstack
 
-        if self.excinfo:
-
-            self.errorstack = ErrorStack(
-                self.excinfo,
-                self.rolledback
-            )
-            if self.is_formula_error_used:
-                errmsg = traceback.format_exception_only(
-                    self.excinfo[0],
-                    self.excinfo[1]
-                )
-                errmsg = "".join(errmsg)
-                errmsg += self.errorstack.tracemessage()
-                err = FormulaError(
-                    "Error raised during formula execution\n" + errmsg)
-                if self.is_formula_error_handled:
-                    print(err, file=sys.stderr)
-                else:
-                    raise err
-            else:
-                raise self.excinfo[1]
-
-        else:
+        if not self.excinfo:
             return self.buffer
+        self.errorstack = ErrorStack(
+            self.excinfo,
+            self.rolledback
+        )
+        if not self.is_formula_error_used:
+            raise self.excinfo[1]
+
+        errmsg = traceback.format_exception_only(
+            self.excinfo[0],
+            self.excinfo[1]
+        )
+        errmsg = "".join(errmsg)
+        errmsg += self.errorstack.tracemessage()
+        err = FormulaError(
+            "Error raised during formula execution\n" + errmsg)
+        if self.is_formula_error_handled:
+            print(err, file=sys.stderr)
+        else:
+            raise err
 
 
 class ThreadedExecutor(NonThreadedExecutor):
@@ -176,30 +172,27 @@ class ThreadedExecutor(NonThreadedExecutor):
             assert not self.callstack.counter
             assert not self.refstack
 
-            if self.excinfo:
-
-                self.errorstack = ErrorStack(
-                    self.excinfo,
-                    self.rolledback
-                )
-                if self.is_formula_error_used:
-                    errmsg = traceback.format_exception_only(
-                        self.excinfo[0],
-                        self.excinfo[1]
-                    )
-                    errmsg = "".join(errmsg)
-                    errmsg += self.errorstack.tracemessage()
-                    raise FormulaError(
-                        "Error raised during formula execution\n" + errmsg)
-                else:
-                    raise self.excinfo[1]
-
-            else:
+            if not self.excinfo:
                 return self.thread.buffer
 
+            self.errorstack = ErrorStack(
+                self.excinfo,
+                self.rolledback
+            )
+            if not self.is_formula_error_used:
+                raise self.excinfo[1]
+
+            errmsg = traceback.format_exception_only(
+                self.excinfo[0],
+                self.excinfo[1]
+            )
+            errmsg = "".join(errmsg)
+            errmsg += self.errorstack.tracemessage()
+            raise FormulaError(
+                "Error raised during formula execution\n" + errmsg)
         except FormulaError as err:
             if self.is_formula_error_handled:
-                print(str(err), file=sys.stderr)
+                print(err, file=sys.stderr)
             else:
                 raise
 
@@ -218,11 +211,7 @@ class CallStack(deque):
         self.executor = executor
         self.refstack = executor.refstack
 
-        if maxdepth:
-            self.maxdepth = maxdepth
-        else:
-            self.maxdepth = self.default_maxdepth
-
+        self.maxdepth = maxdepth or self.default_maxdepth
         self.counter = 0
         deque.__init__(self)
 
@@ -235,8 +224,7 @@ class CallStack(deque):
     def append(self, item):
 
         if len(self) > self.maxdepth:
-            raise DeepReferenceError(
-                "Formula chain exceeded the %s limit" % self.maxdepth)
+            raise DeepReferenceError(f"Formula chain exceeded the {self.maxdepth} limit")
         deque.append(self, item)
         self.counter += 1
 
@@ -251,13 +239,9 @@ class CallStack(deque):
         else:
             graph.add_node(node)
 
-        while self.refstack:
-            if self.refstack[-1][0] == self.counter:
-                _, ref = self.refstack.pop()
-                cells.model.refgraph.add_edge(ref, node)
-            else:
-                break
-
+        while self.refstack and self.refstack[-1][0] == self.counter:
+            _, ref = self.refstack.pop()
+            cells.model.refgraph.add_edge(ref, node)
         return node
 
     def rollback(self):
@@ -280,10 +264,10 @@ class CallStack(deque):
         """
         if maxlen > 0, the message is shortened to maxlen traces.
         """
-        result = ""
-        for i, value in enumerate(self):
-            result += "{0}: {1}\n".format(i, get_node_repr(value))
-
+        result = "".join(
+            "{0}: {1}\n".format(i, get_node_repr(value))
+            for i, value in enumerate(self)
+        )
         result = result.strip("\n")
         lines = result.split("\n")
 
@@ -324,18 +308,19 @@ class TraceableCallStack(CallStack):
         )
 
     def get_tracestack(self):
-        return list(
-            (sign,
-             depth,
-             t_stamp,
-             item[OBJ].get_repr(fullname=True, add_params=True),
-             item[KEY]
-             ) for sign, depth, t_stamp, item in self.tracestack
-        )
+        return [
+            (
+                sign,
+                depth,
+                t_stamp,
+                item[OBJ].get_repr(fullname=True, add_params=True),
+                item[KEY],
+            )
+            for sign, depth, t_stamp, item in self.tracestack
+        ]
 
     def get_nodes(self):
-        return list(
-            trace[3] for trace in self.tracestack if trace[0] == "ENTER")
+        return [trace[3] for trace in self.tracestack if trace[0] == "ENTER"]
 
 
 class ErrorStack(deque):
@@ -351,7 +336,7 @@ class ErrorStack(deque):
         for frame in tbexc.stack:
             if mxdir in frame.filename and frame.name == "on_eval_formula":
                 self.on_eval_flag = True
-            elif not mxdir in frame.filename and self.on_eval_flag:
+            elif mxdir not in frame.filename and self.on_eval_flag:
                 node = rolledback.pop()
                 self.append(
                     (node, frame.lineno, tb.tb_frame.f_locals.copy())
@@ -379,7 +364,7 @@ class ErrorStack(deque):
         for i, frame in enumerate(self):
             result += "{0}: {1}".format(i, get_node_repr(frame[0]))
             if frame[1]:
-                result += ", line %s" % frame[1]
+                result += f", line {frame[1]}"
             result += "\n"
 
         result = result.rstrip("\n")
@@ -408,10 +393,10 @@ def custom_showwarning(
 
     if file is None:
         file = sys.stderr
-        if file is None:
-            # sys.stderr is None when run with pythonw.exe:
-            # warnings get lost
-            return
+    if file is None:
+        # sys.stderr is None when run with pythonw.exe:
+        # warnings get lost
+        return
     text = "%s: %s\n" % (category.__name__, message)
     try:
         file.write(text)
@@ -498,16 +483,12 @@ class System:
         self.serializing = None
         self._recalc_dependents = False
 
+        self.is_ipysetup = False
         if setup_shell:
             if is_ipython():
-                self.is_ipysetup = False
                 self.setup_ipython()
             else:
                 self.shell = None
-                self.is_ipysetup = False
-        else:
-            self.is_ipysetup = False
-
         self.iomanager = IOManager()
 
     def setup_ipython(self):
@@ -576,9 +557,8 @@ class System:
 
         if "sys.tracebacklimit" in orig:
             sys.tracebacklimit = orig["sys.tracebacklimit"]
-        else:
-            if hasattr(sys, "tracebacklimit"):
-                del sys.tracebacklimit
+        elif hasattr(sys, "tracebacklimit"):
+            del sys.tracebacklimit
 
         if "showwarning" in orig:
             warnings.showwarning = orig["showwarning"]
@@ -598,23 +578,19 @@ class System:
 
         if new_name == old_name:
             return False
-        else:
-            if rename_old and new_name in self.models:
-                self._rename_samename(new_name)
+        if rename_old and new_name in self.models:
+            self._rename_samename(new_name)
 
-            result = self.models[old_name].rename(new_name)
-            if result:
-                self.models[new_name] = self.models.pop(old_name)
-                return True
-            else:
-                return False
+        if result := self.models[old_name].rename(new_name):
+            self.models[new_name] = self.models.pop(old_name)
+            return True
+        else:
+            return False
 
     def _rename_samename(self, name):
         backupname = self._backupnamer.get_next(self.models, prefix=name)
         if self.rename_model(backupname, name):
-            warnings.warn(
-                "Existing model '%s' renamed to '%s'" % (name, backupname)
-            )
+            warnings.warn(f"Existing model '{name}' renamed to '{backupname}'")
         else:
             raise ValueError("Failed to create %s", name)
 
@@ -624,22 +600,15 @@ class System:
 
     @property
     def currentspace(self):
-        if self.currentmodel:
-            return self.currentmodel.currentspace
-        else:
-            return None
+        return self.currentmodel.currentspace if self.currentmodel else None
 
     def get_curspace(self):
         """Get or create current space"""
         if self.currentspace:
             return self.currentspace
-        else:
-            if self.currentmodel:
-                m = self.currentmodel
-            else:
-                m = self.new_model()    # self.new_model sets current_model
-            m.currentspace = m.updater.new_space(m)
-            return m.currentspace
+        m = self.currentmodel or self.new_model()
+        m.currentspace = m.updater.new_space(m)
+        return m.currentspace
 
     def backup_model(self, model, filepath, datapath):
         model._impl.update_lazyevals()
@@ -660,18 +629,16 @@ class System:
 
         model._impl.restore_state(datapath)
 
-        if name is not None:
-            if not is_valid_name(name):
-                raise ValueError("Invalid name '%s'." % name)
+        if name is not None and not is_valid_name(name):
+            raise ValueError(f"Invalid name '{name}'.")
 
         newname = name or model.name
 
         if newname in self.models:
             self._rename_samename(newname)
 
-        if name is not None:
-            if not model._impl.rename(name):
-                raise RuntimeError("must not happen")
+        if name is not None and not model._impl.rename(name):
+            raise RuntimeError("must not happen")
 
         self.models[newname] = model._impl
         self.currentmodel = model._impl
@@ -690,13 +657,10 @@ class System:
         parts = name.split(".")
         try:
             model = self.models[parts.pop(0)].interface
-        except  KeyError:
-            raise NameError("'%s' not found" % name)
+        except KeyError:
+            raise NameError(f"'{name}' not found")
 
-        if parts:
-            return model._get_object(".".join(parts), as_proxy)
-        else:
-            return model
+        return model._get_object(".".join(parts), as_proxy) if parts else model
 
     def get_object_from_idtuple(self, idtuple, as_proxy=False):
         """Retrieve an object from tuple id."""
@@ -776,14 +740,10 @@ class System:
         return True
 
     def get_stacktrace(self, summarize):
-        if self._is_stacktrace_active():
-            trace = self.callstack.get_tracestack()
-            if not summarize:
-                return trace
-            else:
-                return self._get_stacktrace_summary(trace)
-        else:
+        if not self._is_stacktrace_active():
             raise RuntimeError("call stack trace not active")
+        trace = self.callstack.get_tracestack()
+        return self._get_stacktrace_summary(trace) if summarize else trace
 
     def clear_stacktrace(self):
         if self._is_stacktrace_active():
