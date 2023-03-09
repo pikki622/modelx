@@ -81,16 +81,11 @@ class TupleID(tuple):
         keys = []
         for key in self:
             if isinstance(key, str):
-                keys.append('"%s"' % key)
+                keys.append(f'"{key}"')
             elif isinstance(key, tuple):
-                keys.append(str(id(key)))
+                keys.append(id(key))
 
-        if len(keys) == 1:
-            keystr = "(%s,)" % keys[0]
-        else:
-            keystr = "(%s)" % ", ".join(keys)
-
-        return keystr
+        return f"({keys[0]},)" if len(keys) == 1 else f'({", ".join(keys)})'
 
     def pickle_args(self, argsdict):
         for key in self:
@@ -98,9 +93,7 @@ class TupleID(tuple):
                 id_ = id(key)
                 if id_ not in argsdict:
                     argsdict[id_] = key
-            elif isinstance(key, str):
-                pass
-            else:
+            elif not isinstance(key, str):
                 raise ValueError("unknown tuple id")
 
 
@@ -128,9 +121,8 @@ class SourceStructure:
                     "DEFAULT")
                 is_divider_read = False
                 self.sections[i] = sec
-            else:
-                if line.strip() == SECTION_DIVIDER:
-                    is_divider_read = True
+            elif line.strip() == SECTION_DIVIDER:
+                is_divider_read = True
 
     def get_section(self, lineno):
         sections = list(self.sections.keys())
@@ -151,7 +143,7 @@ class Instruction(BaseInstruction):
         self.func = func
         self.args = args
         self.arghook = arghook
-        self.kwargs = kwargs if kwargs else {}
+        self.kwargs = kwargs or {}
         self.parser = parser
         self.retval = None
 
@@ -167,11 +159,7 @@ class Instruction(BaseInstruction):
                    parser=parser)
 
     def execute(self):
-        if self.arghook:
-            args, kwargs = self.arghook(self)
-        else:
-            args, kwargs = self.args, self.kwargs
-
+        args, kwargs = self.arghook(self) if self.arghook else (self.args, self.kwargs)
         self.retval = self.func(*args, **kwargs)
         return self.retval
 
@@ -180,7 +168,7 @@ class Instruction(BaseInstruction):
         return self.func.__name__
 
     def __repr__(self):
-        return "<Instruction: %s>" % self.funcname
+        return f"<Instruction: {self.funcname}>"
 
 
 class OtherInstFunctor:
@@ -210,9 +198,8 @@ class CompoundInstruction(BaseInstruction):
         return len(self.instructions)
 
     def append(self, inst):
-        if inst:
-            if isinstance(inst, BaseInstruction):
-                self.instructions.append(inst)
+        if inst and isinstance(inst, BaseInstruction):
+            self.instructions.append(inst)
 
     def extend(self, instructions):
         if instructions:
@@ -237,15 +224,14 @@ class CompoundInstruction(BaseInstruction):
                     pos += 1
                 else:
                     self.instructions.pop(pos)
-            else:
-                if cond(inst):
-                    inst.execute()
-                    if pop_executed:
-                        self.instructions.pop(pos)
-                    else:
-                        pos += 1
+            elif cond(inst):
+                inst.execute()
+                if pop_executed:
+                    self.instructions.pop(pos)
                 else:
                     pos += 1
+            else:
+                pos += 1
 
     def execute_selected_methods(self, methods, pop_executed=True):
 
@@ -266,12 +252,10 @@ class CompoundInstruction(BaseInstruction):
         for inst in self.instructions:
             if isinstance(inst, CompoundInstruction):
                 result = inst.find_instruction(cond)
-                if result:
-                    return result
             else:
                 result = cond(inst)
-                if result:
-                    return result
+            if result:
+                return result
 
 
 # --------------------------------------------------------------------------
@@ -284,14 +268,13 @@ def output_input(obj, key):
     params = obj.parameters
 
     arglist = ", ".join(
-        "%s=%s" % (param, repr(arg)) for param, arg in
-        zip(params, key)
+        f"{param}={repr(arg)}" for param, arg in zip(params, key)
     )
 
     if obj._impl.has_node:
-        return name + "(" + arglist + ")" + "=" + repr(obj(*key))
+        return f"{name}({arglist})={repr(obj(*key))}"
     else:
-        return name + "(" + arglist + ")"
+        return f"{name}({arglist})"
 
 
 class ModelWriter:
@@ -455,30 +438,28 @@ class ModelEncoder(BaseEncoder):
         if self.model.doc is not None:
             lines.append("\"\"\"" + self.model.doc + "\"\"\"")
 
-        lines.append("from modelx.serialize.jsonvalues import *")
-        lines.append("_name = \"%s\"" % self.model.name)
-        lines.append("_allow_none = " + str(self.model.allow_none))
-
-        # Output _spaces. Exclude spaces created from methods
-        spaces = []
-        for name, space in self.model.spaces.items():
-            if name[0] == "_":
-                pass
-            elif MethodCallEncoder.from_method(space):
-                pass
-            else:
-                spaces.append(name)
-        lines.append("_spaces = " + json.JSONEncoder(
-            ensure_ascii=False,
-            indent=4
-        ).encode(spaces))
+        lines.extend(
+            (
+                "from modelx.serialize.jsonvalues import *",
+                "_name = \"%s\"" % self.model.name,
+                f"_allow_none = {str(self.model.allow_none)}",
+            )
+        )
+        spaces = [
+            name
+            for name, space in self.model.spaces.items()
+            if name[0] != "_"
+            and (name[0] == "_" or not MethodCallEncoder.from_method(space))
+        ]
+        lines.append(
+            f"_spaces = {json.JSONEncoder(ensure_ascii=False, indent=4).encode(spaces)}"
+        )
         lines.extend(enc.encode() for enc in self.method_encoders)
         lines.append(self.refview_encoder.encode())
         return "\n\n".join(lines)
 
     def instruct(self):
-        insts = []
-        insts.append(self.refview_encoder.instruct())
+        insts = [self.refview_encoder.instruct()]
         insts.extend(e.instruct() for e in self.method_encoders)
         return CompoundInstruction(insts)
 
@@ -499,8 +480,7 @@ class SpaceEncoder(BaseEncoder):
 
         self.space_method_encoders = []
         for space in self.space.spaces.values():
-            encoder = MethodCallSelector.select(space)
-            if encoder:
+            if encoder := MethodCallSelector.select(space):
                 enc = encoder(
                     self.writer,
                     space,
@@ -514,8 +494,7 @@ class SpaceEncoder(BaseEncoder):
 
         self.cells_method_encoders = []
         for cells in self.space.cells.values():
-            encoder = MethodCallSelector.select(cells)
-            if encoder:
+            if encoder := MethodCallSelector.select(cells):
                 enc = encoder(
                     self.writer,
                     cells,
@@ -529,18 +508,17 @@ class SpaceEncoder(BaseEncoder):
 
         self.cells_encoders = []
         for cells in self.space.cells.values():
-            if cells._is_defined():
-                if not MethodCallEncoder.from_method(cells):
-                    self.cells_encoders.append(
-                        CellsEncoder(
-                            writer,
-                            cells,
-                            parent=self.space,
-                            name=cells.name,
-                            srcpath=srcpath,
-                            datapath=self.datapath / cells.name
-                        )
+            if cells._is_defined() and not MethodCallEncoder.from_method(cells):
+                self.cells_encoders.append(
+                    CellsEncoder(
+                        writer,
+                        cells,
+                        parent=self.space,
+                        name=cells.name,
+                        srcpath=srcpath,
+                        datapath=self.datapath / cells.name
                     )
+                )
 
     def encode(self):
 
@@ -553,41 +531,35 @@ class SpaceEncoder(BaseEncoder):
         # Output formula
         if self.space.formula:
             if self.space.formula.source[:6] == "lambda":
-                lines.append("_formula = " + self.space.formula.source)
+                lines.append(f"_formula = {self.space.formula.source}")
             else:
                 lines.append(self.space.formula.source)
         else:
             lines.append("_formula = None")
 
-        # Output bases
-        bases = []
-        for base in self.space._direct_bases:
-            bases.append(
-                abs_to_rel(base._evalrepr, self.parent._evalrepr))
-        lines.append("_bases = " + json.JSONEncoder(
-            ensure_ascii=False,
-            indent=4
-        ).encode(bases))
-
-        # Output allow_none
-        lines.append("_allow_none = " + str(self.space.allow_none))
-
+        bases = [
+            abs_to_rel(base._evalrepr, self.parent._evalrepr)
+            for base in self.space._direct_bases
+        ]
+        lines.extend(
+            (
+                f"_bases = {json.JSONEncoder(ensure_ascii=False, indent=4).encode(bases)}",
+                f"_allow_none = {str(self.space.allow_none)}",
+            )
+        )
         # Output _spaces. Exclude spaces created from methods
         spaces = []
         for name, space in self.space.spaces.items():
             if name[0] == "_":
+                continue
+            if MethodCallEncoder.from_method(space):
                 pass
-            elif MethodCallEncoder.from_method(space):
-                pass
-            elif space._is_derived():
-                pass
-            else:
+            elif not space._is_derived():
                 spaces.append(name)
 
-        lines.append("_spaces = " + json.JSONEncoder(
-            ensure_ascii=False,
-            indent=4
-        ).encode(spaces))
+        lines.append(
+            f"_spaces = {json.JSONEncoder(ensure_ascii=False, indent=4).encode(spaces)}"
+        )
         lines.extend(e.encode() for e in self.space_method_encoders)
         lines.extend(e.encode() for e in self.cells_method_encoders)
 
@@ -595,20 +567,15 @@ class SpaceEncoder(BaseEncoder):
         if self.cells_encoders:
             separator = SECTION_DIVIDER + "\n" + SECTIONS["CELLSDEFS"].symbol
             lines.append(separator)
-        for encoder in self.cells_encoders:
-            lines.append(encoder.encode())
-
+        lines.extend(encoder.encode() for encoder in self.cells_encoders)
         lines.append(self.refview_encoder.encode())
         return "\n\n".join(lines)
 
     def instruct(self):
-        insts = []
-        insts.append(self.refview_encoder.instruct())
+        insts = [self.refview_encoder.instruct()]
         insts.extend(e.instruct() for e in self.space_method_encoders)
         insts.extend(e.instruct() for e in self.cells_method_encoders)
-        for encoder in self.cells_encoders:
-            insts.append(encoder.instruct())
-
+        insts.extend(encoder.instruct() for encoder in self.cells_encoders)
         insts.append(Instruction(self.pickle_dynamic_inputs))
 
         return CompoundInstruction(insts)
@@ -681,8 +648,7 @@ class RefViewEncoder(BaseEncoder):
         separator = SECTION_DIVIDER + "\n" + SECTIONS["REFDEFS"].symbol
         if self.encoders:
             lines.append(separator)
-        for e in self.encoders:
-            lines.append(e.name + " = " + e.encode())
+        lines.extend(f"{e.name} = {e.encode()}" for e in self.encoders)
         return "\n\n".join(lines)
 
     def instruct(self):
@@ -696,18 +662,18 @@ class CellsEncoder(BaseEncoder):
         lines = []
         if self.target.formula:
             if self.target.formula.source[:6] == "lambda":
-                line = self.target.name + " = " + self.target.formula.source
+                line = f"{self.target.name} = {self.target.formula.source}"
                 if self.target.doc:
                     line += "\n" + ("\"\"\"%s\"\"\"" % self.target.doc)
                 lines.append(line)
             else:
                 lines.append(self.target.formula.source)
         else:
-            lines.append(self.target.name + " = None")
+            lines.append(f"{self.target.name} = None")
 
         # Output allow_none
         if self.target.allow_none is not None:
-            lines.append("_allow_none = " + str(self.target.allow_none))
+            lines.append(f"_allow_none = {str(self.target.allow_none)}")
 
         return "\n\n".join(lines)
 
@@ -792,18 +758,15 @@ class FromFileEncoder(MethodCallEncoder):
     write_method = copy_file
 
     def encode(self):
-        lines = []
         src = self.target._impl.source.copy()
         call_id = src["kwargs"]["call_id"]
 
         args = list(src["args"])
         args[0] = pathlib.Path(args[0]).name
         src["args"] = args
-        lines.append("_method = " + json.JSONEncoder(
-            ensure_ascii=False,
-            indent=4
-        ).encode(src))
-
+        lines = [
+            f"_method = {json.JSONEncoder(ensure_ascii=False, indent=4).encode(src)}"
+        ]
         return "\n\n".join(lines)
 
     @classmethod
@@ -820,7 +783,7 @@ def write_pandas(obj, path_: pathlib.Path, filename=None,
     src = obj._impl.source
     data = src["args"][0]
     if not filename:
-        filename = obj.name + ".pandas"
+        filename = f"{obj.name}.pandas"
     ziputil.pandas_to_pickle(data, path_.joinpath(filename),
                              compression=compression,
                              compresslevel=compresslevel)
@@ -832,7 +795,6 @@ class FromPandasEncoder(MethodCallEncoder):
     write_method = write_pandas
 
     def encode(self):
-        lines = []
         src = self.target._impl.source.copy()
 
         args = list(src["args"])
@@ -843,11 +805,9 @@ class FromPandasEncoder(MethodCallEncoder):
         args[0] = enc.datapath.relative_to(
             self.srcpath.parent).as_posix()
         src["args"] = args
-        lines.append("_method = " + json.JSONEncoder(
-            ensure_ascii=False,
-            indent=4
-        ).encode(src))
-
+        lines = [
+            f"_method = {json.JSONEncoder(ensure_ascii=False, indent=4).encode(src)}"
+        ]
         return "\n\n".join(lines)
 
     def instruct(self):
@@ -922,7 +882,7 @@ class LiteralEncoder(BaseEncoder):
 
     def encode(self):
         # True, False, None
-        if isinstance(self.target.value, bool) or isinstance(self.target.value, type(None)):
+        if isinstance(self.target.value, (bool, type(None))):
             return str(self.target.value)
         else:
             return json.dumps(self.target.value, ensure_ascii=False)
@@ -933,10 +893,11 @@ class IOSpecEncoder(BaseEncoder):
     @classmethod
     def condition(cls, ref, writer):
 
-        if not isinstance(ref, Interface): # Avoid null object
-            return id(ref.value) in writer.value_id_map
-        else:
-            return False
+        return (
+            False
+            if isinstance(ref, Interface)
+            else id(ref.value) in writer.value_id_map
+        )
 
     def encode(self):
         value_id = id(self.target.value)
@@ -1002,9 +963,12 @@ class EncoderSelector(BaseSelector):
 def _replace_saved_path(space, temppath: str, path: str):
 
     if not space.is_model():
-        if space.source and "args" in space.source:
-            if space.source["args"][0] == temppath:
-                space.source["args"][0] = path
+        if (
+            space.source
+            and "args" in space.source
+            and space.source["args"][0] == temppath
+        ):
+            space.source["args"][0] = path
 
         for cells in space.cells.values():
             if cells.source and cells.source["args"][0] == temppath:
@@ -1140,7 +1104,7 @@ class ModelReader:
         srcstructure = SourceStructure(src)
         atok = asttokens.ASTTokens(src, parse=True)
 
-        for i, stmt in enumerate(atok.tree.body):
+        for stmt in atok.tree.body:
             sec = srcstructure.get_section(stmt.lineno)
             parser = ParserSelector.select(stmt, sec, atok)(
                 stmt, atok, self, sec, obj, srcpath=path_
@@ -1211,11 +1175,7 @@ class DocstringParser(BaseNodeParser):
 
     @classmethod
     def condition(cls, node, section, atok):
-        if isinstance(node, cls.AST_NODE):
-            if isinstance(node.value, ast.Str):
-                return True
-
-        return False
+        return isinstance(node, cls.AST_NODE) and isinstance(node.value, ast.Str)
 
     def get_instruction(self):
         if self.section == "DEFAULT":
@@ -1253,11 +1213,11 @@ class RenameParser(BaseAssignParser):
     @classmethod
     def condition(cls, node, section, atok):
 
-        if not super(RenameParser, cls).condition(node, section, atok):
-            return False
-        if node.first_token.string == "_name":
-            return True
-        return False
+        return (
+            node.first_token.string == "_name"
+            if super(RenameParser, cls).condition(node, section, atok)
+            else False
+        )
 
     def get_instruction(self):
 
@@ -1280,10 +1240,11 @@ class MethodCallParser(BaseAssignParser):
 
     @classmethod
     def condition(cls, node, section, atok):
-        if isinstance(node, cls.AST_NODE) and section == "DEFAULT":
-            if node.first_token.string == "_method":
-                return True
-        return False
+        return (
+            isinstance(node, cls.AST_NODE)
+            and section == "DEFAULT"
+            and node.first_token.string == "_method"
+        )
 
 
 def filehook(inst):     # Not in use
@@ -1384,10 +1345,7 @@ class AttrAssignParser(BaseAssignParser):
 
     @classmethod
     def condition(cls, node, section, atok):
-        if isinstance(node, cls.AST_NODE) and (
-                section == "DEFAULT" or section == "CELLSDEFS"):
-            return True
-        return False
+        return isinstance(node, cls.AST_NODE) and section in ["DEFAULT", "CELLSDEFS"]
 
     def get_instruction(self):
 
@@ -1450,9 +1408,7 @@ class RefAssignParser(BaseAssignParser):
 
     @classmethod
     def condition(cls, node, section, atok):
-        if isinstance(node, cls.AST_NODE) and section == "REFDEFS":
-            return True
-        return False
+        return isinstance(node, cls.AST_NODE) and section == "REFDEFS"
 
     def get_instruction(self):
 
@@ -1541,11 +1497,13 @@ else:
     def skip_blank_tokens(tokens, idx):
         # There may be trailing comments that must be skipped.
         # See FunctionDefParser
-        while (tokens[idx].type == token.NEWLINE or
-               tokens[idx].type == token.INDENT or
-               tokens[idx].type == token.DEDENT or
-               tokens[idx].type == token.NL or      # New in Python 3.7
-               tokens[idx].type == token.COMMENT):  # New in Python 3.7
+        while tokens[idx].type in [
+            token.NEWLINE,
+            token.INDENT,
+            token.DEDENT,
+            token.NL,
+            token.COMMENT,
+        ]:  # New in Python 3.7
             idx += 1
         return idx
 
@@ -1555,11 +1513,11 @@ class LambdaAssignParser(BaseAssignParser, CellsInputDataMixin):
     @classmethod
     def condition(cls, node, section, atok):
         # Exclude assignments of names starting "_"
-        if isinstance(node, cls.AST_NODE) and section == "CELLSDEFS" and (
-            node.targets[0].id[0] != "_"
-        ):
-            return True
-        return False
+        return (
+            isinstance(node, cls.AST_NODE)
+            and section == "CELLSDEFS"
+            and node.targets[0].id[0] != "_"
+        )
 
     @property
     def cellsname(self):
@@ -1655,10 +1613,10 @@ class SpaceFuncDefParser(FunctionDefParser):
 
     @classmethod
     def condition(cls, node, section, atok):
-        if super(SpaceFuncDefParser, cls).condition(node, section, atok):
-            if node.name == "_formula":
-                return True
-        return False
+        return bool(
+            super(SpaceFuncDefParser, cls).condition(node, section, atok)
+            and node.name == "_formula"
+        )
 
 
 class CellsFuncDefParser(FunctionDefParser, CellsInputDataMixin):

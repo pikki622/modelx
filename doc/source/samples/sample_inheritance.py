@@ -6,10 +6,7 @@ from modelx import *
 model, life = new_model(), new_space('Life')
 
 def l(x):
-    if x == x0:
-        return 100000
-    else:
-        return l(x - 1) - d(x - 1)
+    return 100000 if x == x0 else l(x - 1) - d(x - 1)
 
 def d(x):
     return l(x) * q
@@ -33,12 +30,10 @@ def benefits(x):
 
 @defcells
 def pv_benefits(x):
-    if x < x0:
+    if x < x0 or x > x0 + n:
         return 0
-    elif x <= x0 + n:
-        return benefits(x) + pv_benefits(x + 1) / (1 + disc_rate)
     else:
-        return 0
+        return benefits(x) + pv_benefits(x + 1) / (1 + disc_rate)
 
 # ---------------------------------------------------------------------
 # line:46-47
@@ -70,8 +65,7 @@ data = [[1, 50, 10], [2, 60, 15], [3, 70, 5]]
 # line:72-86
 
 def params(policy_id):
-    return {'name': 'Policy%s' % policy_id,
-            'bases': _self}
+    return {'name': f'Policy{policy_id}', 'bases': _self}
 
 policy = model.new_space(name='Policy', bases=term_life, formula=params)
 

@@ -46,7 +46,7 @@ def test_with_sapce_allow_none_false(
     with SuppressFormulaError():
         with pytest.raises(NoneReturnedError):
             if op == "get":
-                assert cells[1] == None
+                assert cells[1] is None
             else:
                 cells[1] = None
 

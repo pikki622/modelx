@@ -20,7 +20,7 @@ def test_is_valid_name_invalid(name):
 def simplenamer():
     autonamer = AutoNamer("Cells")
 
-    for i in range(10):
+    for _ in range(10):
         autonamer.get_next([])
 
     return autonamer

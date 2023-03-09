@@ -13,10 +13,7 @@ model, space = new_model(), new_space()
 # defining function name ('fibo').
 @defcells(name='bar')
 def fibo(x):
-    if x == 0 or x == 1:
-        return x
-    else:
-        return bar[x - 1] + bar[x - 2]  # Refer by cells not by function
+    return x if x in [0, 1] else bar[x - 1] + bar[x - 2]
 
 
 # Should print 55

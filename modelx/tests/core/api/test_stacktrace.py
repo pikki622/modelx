@@ -29,9 +29,7 @@ def testcells(testspace):
     mx.stop_stacktrace()
 
 
-@pytest.mark.parametrize(
-    "count, position",
-    list(enumerate(chain(range(0, 10), range(9, -1, -1)))))
+@pytest.mark.parametrize("count, position", list(enumerate(chain(range(10), range(9, -1, -1)))))
 def test_get_stacktrace(testcells, count, position):
 
     trace = mx.get_stacktrace()

@@ -59,7 +59,7 @@ def test_nested_globals():
     """Globals used in generator and nested function"""
 
     def foo():
-        return list(gvar * i for i in (0, 1, 2))
+        return [gvar * i for i in (0, 1, 2)]
 
     def bar():
         def inner():

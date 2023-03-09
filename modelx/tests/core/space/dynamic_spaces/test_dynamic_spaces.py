@@ -6,11 +6,7 @@ import pytest
 
 def parent_param(x):
 
-    if x == 0:
-        bases = [Base1]
-    else:
-        bases = [Base2]
-
+    bases = [Base1] if x == 0 else [Base2]
     return {"bases": bases}
 
 
@@ -75,7 +71,7 @@ def sample_dynamic_model(request, build_sample_dynamic_model, tmpdir_factory):
 
     model = build_sample_dynamic_model
     if request.param:
-        file = str(tmpdir_factory.mktemp("data").join(model.name + ".mx"))
+        file = str(tmpdir_factory.mktemp("data").join(f"{model.name}.mx"))
         model.save(file)
         model.close()
         model = mx.restore_model(file)

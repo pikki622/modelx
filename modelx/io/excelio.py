@@ -52,31 +52,31 @@ def _is_range_address(range_addr):
     if not match:
         return False
     else:
-        cells = match.group("cells")
+        cells = match["cells"]
 
     if not cells:
         return False
-    else:
-        min_col = _get_col_index(match.group("min_col"))
-        min_row = int(match.group("min_row"))
+    min_col = _get_col_index(match["min_col"])
+    min_row = int(match["min_row"])
 
         # if range_addr is for a single cell,
         # max_col and max_row are None.
-        max_col = match.group("max_col")
-        max_col = max_col and _get_col_index(max_col)
+    max_col = match["max_col"]
+    max_col = max_col and _get_col_index(max_col)
 
-        max_row = match.group("max_row")
-        max_row = max_row and int(max_row)
+    max_row = match["max_row"]
+    max_row = max_row and int(max_row)
 
-        if max_col and max_row:
-            return (
-                (min_col <= max_col)
-                and (min_row <= max_row)
-                and (max_col <= 16384)
-                and (max_row <= 1048576)
-            )
-        else:
-            return (min_col <= 16384) and (min_row <= 1048576)
+    return (
+        (
+            (min_col <= max_col)
+            and (min_row <= max_row)
+            and (max_col <= 16384)
+            and (max_row <= 1048576)
+        )
+        if max_col and max_row
+        else (min_col <= 16384) and (min_row <= 1048576)
+    )
 
 
 def _get_range(book, range_, sheet):
@@ -86,9 +86,7 @@ def _get_range(book, range_, sheet):
     if isinstance(book, str):
         filename = book
         book = opxl.load_workbook(book, data_only=True)
-    elif isinstance(book, opxl.Workbook):
-        pass
-    else:
+    elif not isinstance(book, opxl.Workbook):
         raise TypeError
 
     if _is_range_address(range_):
@@ -98,9 +96,7 @@ def _get_range(book, range_, sheet):
     else:
         data = _get_namedrange(book, range_, sheet)
         if data is None:
-            raise ValueError(
-                "Named range '%s' not found in %s" % (range_, filename or book)
-            )
+            raise ValueError(f"Named range '{range_}' not found in {filename or book}")
 
     return data
 
@@ -131,27 +127,29 @@ def _get_namedrange(book, rangename, sheetname=None):
     if opxlver > (3, 0):
 
         def cond(namedef):
-            if namedef.type.upper() == "RANGE" and namedef.name.upper() == rangename.upper():
-                return True
-            else:
-                return False
+            return (
+                namedef.type.upper() == "RANGE"
+                and namedef.name.upper() == rangename.upper()
+            )
+
     else:
         def cond(namedef):
 
-            if namedef.type.upper() == "RANGE":
-                if namedef.name.upper() == rangename.upper():
+            if (
+                namedef.type.upper() == "RANGE"
+                and namedef.name.upper() == rangename.upper()
+            ):
+                if sheetname is None:
+                    if not namedef.localSheetId:
+                        return True
 
-                    if sheetname is None:
-                        if not namedef.localSheetId:
-                            return True
+                else:  # sheet local name
+                    sheet_id = [sht.upper() for sht in book.sheetnames].index(
+                        sheetname.upper()
+                    )
 
-                    else:  # sheet local name
-                        sheet_id = [sht.upper() for sht in book.sheetnames].index(
-                            sheetname.upper()
-                        )
-
-                        if namedef.localSheetId == sheet_id:
-                            return True
+                    if namedef.localSheetId == sheet_id:
+                        return True
 
             return False
 
@@ -162,16 +160,13 @@ def _get_namedrange(book, rangename, sheetname=None):
         from openpyxl.utils.cell import SHEETRANGE_RE
 
         if name_def.type == "RANGE":
-            tok = Tokenizer("=" + name_def.value)
+            tok = Tokenizer(f"={name_def.value}")
             for part in tok.items:
                 if part.subtype == "RANGE":
                     m = SHEETRANGE_RE.match(part.value)
-                    if m.group("quoted"):
-                        sheet_name = m.group("quoted")
-                    else:
-                        sheet_name = m.group("notquoted")
-
+                    sheet_name = m.group("quoted") or m.group("notquoted")
                     yield sheet_name, m.group("cells")
+
 
 
     if opxlver > (3, 0):
@@ -200,10 +195,7 @@ def _get_namedrange(book, rangename, sheetname=None):
         index = sheetnames_upper.index(sht.upper())
         xlranges.append(book.worksheets[index][addr])
 
-    if len(xlranges) == 1:
-        return xlranges[0]
-    else:
-        return xlranges
+    return xlranges[0] if len(xlranges) == 1 else xlranges
 
 
 def _redirect_merged(cells):
@@ -384,22 +376,22 @@ class ExcelRange(BaseIOSpec, Mapping):
                 if key[1] < self._datasize[0]:
                     key_rows.append(key[1])
                 else:
-                    raise ValueError("invalid row index: %s" % key[1])
+                    raise ValueError(f"invalid row index: {key[1]}")
             elif key[0] == "c":
                 if key[1] < self._datasize[1]:
                     key_cols.append(key[1])
                 else:
-                    raise ValueError("invalid column index: %s" % key[1])
+                    raise ValueError(f"invalid column index: {key[1]}")
             else:
-                raise ValueError("invalid params: %s" % keyarg)
+                raise ValueError(f"invalid params: {keyarg}")
 
         for r in key_rows:
             if r < 0 or r >= self._datasize[0]:
-                raise ValueError("invalid key row: %s" % r)
+                raise ValueError(f"invalid key row: {r}")
 
         for c in key_cols:
             if c < 0 or c >= self._datasize[0]:
-                raise ValueError("invalid key columns: %s" % c)
+                raise ValueError(f"invalid key columns: {c}")
 
         self._size = (self._datasize[0] - len(set(key_rows)),
                       self._datasize[1] - len(set(key_cols)))
@@ -412,8 +404,7 @@ class ExcelRange(BaseIOSpec, Mapping):
                     key = tuple(_redirect_merged(self._cells[r][c]).value
                                 for r in key_rows)
                     if key in rkeys_to_col:
-                        raise ValueError(
-                            "duplicate row key: %s" % repr(key))
+                        raise ValueError(f"duplicate row key: {repr(key)}")
                     rkeys_to_col[key] = c
 
         ckeys_to_row = {}
@@ -424,8 +415,7 @@ class ExcelRange(BaseIOSpec, Mapping):
                     key = tuple(_redirect_merged(self._cells[r][c]).value
                                 for c in key_cols)
                     if key in ckeys_to_row:
-                        raise ValueError(
-                            "duplicate column key: %s" % repr(key))
+                        raise ValueError(f"duplicate column key: {repr(key)}")
                     ckeys_to_row[key] = r
 
         rkind = [i for i, k in enumerate(keys) if k[0] == "r"]
@@ -463,21 +453,20 @@ class ExcelRange(BaseIOSpec, Mapping):
                     for rkey, c in rkeys_to_col.items():
                         result[rkey] = (r, c)
 
-            else:   # key_cols
-                if self._size[1] > 1:
-                    self._keysize = len(key_cols) + 1
-                    for ckey, r in ckeys_to_row.items():
-                        i = 0
-                        for c in range(self._datasize[1]):
-                            if c not in key_cols:
-                                result[ckey + (i,)] = (r, c)
-                                i += 1
-                else:
-                    self._keysize = len(key_cols)
-                    c = next(i for i in range(self._datasize[1])
-                             if i not in key_cols)
-                    for ckey, r in ckeys_to_row.items():
-                        result[ckey] = (r, c)
+            elif self._size[1] > 1:
+                self._keysize = len(key_cols) + 1
+                for ckey, r in ckeys_to_row.items():
+                    i = 0
+                    for c in range(self._datasize[1]):
+                        if c not in key_cols:
+                            result[ckey + (i,)] = (r, c)
+                            i += 1
+            else:
+                self._keysize = len(key_cols)
+                c = next(i for i in range(self._datasize[1])
+                         if i not in key_cols)
+                for ckey, r in ckeys_to_row.items():
+                    result[ckey] = (r, c)
 
         else:   # No key rows and columns
             if self._datasize[0] > 1 and self._datasize[1] > 1:
@@ -518,9 +507,9 @@ class ExcelRange(BaseIOSpec, Mapping):
             if not bool(key):
                 return 0, 0
             else:
-                KeyError("invalid key: %s" % repr(key))
+                KeyError(f"invalid key: {repr(key)}")
         else:
-            raise KeyError("invalid key: %s" % repr(key))
+            raise KeyError(f"invalid key: {repr(key)}")
 
     @property
     def value(self):
@@ -558,8 +547,7 @@ class ExcelRange(BaseIOSpec, Mapping):
             else:
                 raise RuntimeError("must not happen")
 
-            for key in keygen:
-                yield key
+            yield from keygen
 
     def __repr__(self):
         return (

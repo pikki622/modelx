@@ -10,17 +10,11 @@ def Cx(x):
 
 
 def Nx(x):
-    if x == 110:
-        Nx[x] = Dx[x]
-    else:
-        Nx[x] = Nx[x + 1] + Dx[x]
+    Nx[x] = Dx[x] if x == 110 else Nx[x + 1] + Dx[x]
 
 
 def Mx(x):
-    if x == 110:
-        Mx[x] = Dx[x]
-    else:
-        Mx[x] = Mx[x + 1] + Cx[x]
+    Mx[x] = Dx[x] if x == 110 else Mx[x + 1] + Cx[x]
 
 
 def int_rate():

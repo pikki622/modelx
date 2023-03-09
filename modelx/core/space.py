@@ -129,51 +129,39 @@ class DynBaseRefDict(RefDict):
 
         assert isinstance(value, ReferenceImpl)
 
-        if isinstance(value.interface, Interface) and value.interface._is_valid():
-
-            if value.is_relative:   # value.is_relative is set to True
-                                    # When value.is_defined and
-                                    # value.refmode == "relative"
-
-                impl = value.interface._impl.idstr
-                root = self.owner.rootspace._dynbase.idstr
-                rootlen = len(root)
-
-                if root == impl:
-                    return self.owner.rootspace
-                elif root == impl[:rootlen]:
-                    return self.owner.rootspace.get_impl_from_name(
-                        impl[rootlen+1:]) # +1 to remove preceding dot
-                else:
-                    if value.refmode == "auto":
-                        if value.is_defined():
-                            return value
-                        else:
-                            return value.direct_bases[0]
-
-                    elif value.refmode == "relative":
-                        raise ValueError(
-                            "'%s' referred as '%s' is out of '%s'" %
-                            (impl, value.idstr, root)
-                        )
-                    else:
-                        raise RuntimeError("must not happen")
-
-            else:   # absolute
-                return value
-        else:
+        if (
+            not isinstance(value.interface, Interface)
+            or not value.interface._is_valid()
+        ):
             return value
+        if not value.is_relative:
+            return value
+        impl = value.interface._impl.idstr
+        root = self.owner.rootspace._dynbase.idstr
+        rootlen = len(root)
+
+        if root == impl:
+            return self.owner.rootspace
+        elif root == impl[:rootlen]:
+            return self.owner.rootspace.get_impl_from_name(
+                impl[rootlen+1:]) # +1 to remove preceding dot
+        else:
+            if value.refmode == "auto":
+                return value if value.is_defined() else value.direct_bases[0]
+            elif value.refmode == "relative":
+                raise ValueError(f"'{impl}' referred as '{value.idstr}' is out of '{root}'")
+            else:
+                raise RuntimeError("must not happen")
 
 
 def _to_frame_inner(cellsiter, args):
 
     from modelx.io.pandas import cellsiter_to_dataframe
 
-    if len(args) == 1:
-        if isinstance(args[0], Sequence) and len(args[0]) == 0:
-            pass  # Empty sequence
-        else:
-            args = args[0]
+    if len(args) == 1 and (
+        not isinstance(args[0], Sequence) or len(args[0]) != 0
+    ):
+        args = args[0]
 
     if len(args) and shareable_parameters(cellsiter) is None:
         raise RuntimeError("Parameters not shared")
@@ -318,14 +306,10 @@ class BaseSpace(BaseParent, ItemFactory):
         elif hasattr(self, attr):
             return super()._get_object(name, as_proxy)
         else:
-            if attr in self._named_itemspaces:
-                space = self._named_itemspaces[attr]
-                if parts:
-                    return space._get_object(".".join(parts), as_proxy)
-                else:
-                    return space
-            else:
-                raise NameError("'%s' not found" % name)
+            if attr not in self._named_itemspaces:
+                raise NameError(f"'{name}' not found")
+            space = self._named_itemspaces[attr]
+            return space._get_object(".".join(parts), as_proxy) if parts else space
 
     @property
     def bases(self):
@@ -551,15 +535,14 @@ class BaseSpace(BaseParent, ItemFactory):
 
         if self._impl.formula is None:
             return None
-        else:
-            refs = self._impl.altfunc.get_referents()
-            result = refs.copy()
+        refs = self._impl.altfunc.get_referents()
+        result = refs.copy()
 
-            for key, data in refs.items():
-                if key != "builtins" and key != "missing":
-                    result[key] = {name: obj.to_node() for
-                                   name, obj in refs[key].items()}
-            return result
+        for key, data in refs.items():
+            if key not in ["builtins", "missing"]:
+                result[key] = {name: obj.to_node() for
+                               name, obj in refs[key].items()}
+        return result
 
     # ----------------------------------------------------------------------
     # Conversion to Pandas objects
@@ -591,11 +574,7 @@ class BaseSpace(BaseParent, ItemFactory):
         result["refs"] = self.refs._baseattrs
         result["bases"] = [base._idstr for base in self.bases]
 
-        if self.has_params():
-            result["params"] = ", ".join(self.parameters)
-        else:
-            result["params"] = ""
-
+        result["params"] = ", ".join(self.parameters) if self.has_params() else ""
         return result
 
 
@@ -1110,10 +1089,8 @@ class UserSpace(BaseSpace, EditableParent):
             :meth:`relref`
             :meth:`absref`
         """
-        if hasattr(type(self), name):
-            raise AttributeError("cannot set '%s'" % name)
-        elif name in self.properties:
-            raise AttributeError("cannot set '%s'" % name)
+        if hasattr(type(self), name) or name in self.properties:
+            raise AttributeError(f"cannot set '{name}'")
         else:
             self._impl.set_attr(name, value, refmode=refmode)
 
@@ -1125,7 +1102,7 @@ class UserSpace(BaseSpace, EditableParent):
                 if hasattr(attr, 'fdel'):
                     attr.fdel(self)
                 else:
-                    raise AttributeError("cannot delete %s" % name)
+                    raise AttributeError(f"cannot delete {name}")
         else:
             self._impl.del_attr(name)
 
@@ -1209,17 +1186,17 @@ class ItemSpaceParent(ItemFactoryImpl, BaseNamespaceReferrer, HasFormula):
         if formula is None:
             if self.formula is not None:
                 self.del_formula()
+        elif self.formula is None:
+            self.formula = (
+                formula
+                if isinstance(formula, ParamFunc)
+                else ParamFunc(formula, name="_formula")
+            )
+            self.altfunc = BoundFunction(self)
+            self.altfunc.set_refresh()
         else:
-            if self.formula is None:
-                if isinstance(formula, ParamFunc):
-                    self.formula = formula
-                else:
-                    self.formula = ParamFunc(formula, name="_formula")
-                self.altfunc = BoundFunction(self)
-                self.altfunc.set_refresh()
-            else:
-                self.del_formula()
-                self.set_formula(formula)
+            self.del_formula()
+            self.set_formula(formula)
 
     def del_formula(self):
         """Delete formula
@@ -1228,9 +1205,8 @@ class ItemSpaceParent(ItemFactoryImpl, BaseNamespaceReferrer, HasFormula):
         """
         if self.formula is None:
             return
-        else:
-            self.del_all_itemspaces()
-            self.altfunc = self.formula = None
+        self.del_all_itemspaces()
+        self.altfunc = self.formula = None
 
     def _get_dynamic_base(self, bases_):
         """Create or get the base space from a list of spaces
@@ -1259,14 +1235,13 @@ class ItemSpaceParent(ItemFactoryImpl, BaseNamespaceReferrer, HasFormula):
         arguments=None
     ):
         """Create a new dynamic root space."""
-        space = ItemSpaceImpl(
+        return ItemSpaceImpl(
             parent=self,
             base=self._get_dynamic_base(bases),
             name=name,
             refs=refs,
             arguments=arguments,
         )
-        return space
 
     def del_all_itemspaces(self):
         for key in list(self.param_spaces):
@@ -1299,17 +1274,16 @@ class ItemSpaceParent(ItemFactoryImpl, BaseNamespaceReferrer, HasFormula):
 
         if params is None:
             params = {"bases": [self]}  # Default
-        else:
-            if "bases" in params:
-                bases = get_impls(params["bases"])
-                if isinstance(bases, UserSpaceImpl):
-                    params["bases"] = [bases]
-                elif bases is None:
-                    params["bases"] = [self]  # Default
-                else:
-                    params["bases"] = bases
+        elif "bases" in params:
+            bases = get_impls(params["bases"])
+            if isinstance(bases, UserSpaceImpl):
+                params["bases"] = [bases]
+            elif bases is None:
+                params["bases"] = [self]  # Default
             else:
-                params["bases"] = [self]
+                params["bases"] = bases
+        else:
+            params["bases"] = [self]
 
         params["arguments"] = node_get_args(key_to_node(self, key))
         space = self._new_itemspace(**params)
@@ -1417,11 +1391,10 @@ class BaseSpaceImpl(*_base_space_impl_base):
 
         value = self.namespace[name]
 
-        if self.system.callstack.counter:
-            if isinstance(value, ReferenceImpl):
-                self.system.refstack.append(
-                    (self.system.callstack.counter - 1, value)
-                )
+        if self.system.callstack.counter and isinstance(value, ReferenceImpl):
+            self.system.refstack.append(
+                (self.system.callstack.counter - 1, value)
+            )
 
         return self.namespace.interfaces[name]
 
@@ -1446,8 +1419,7 @@ class BaseSpaceImpl(*_base_space_impl_base):
     @property
     def bases(self):
         """Return an iterator over direct base spaces"""
-        spaces = self.spmgr.get_deriv_bases(self)
-        return spaces
+        return self.spmgr.get_deriv_bases(self)
 
     @staticmethod
     def _get_members(other):
@@ -1492,13 +1464,12 @@ class BaseSpaceImpl(*_base_space_impl_base):
 
         if parts:
             return self.all_spaces[child].get_impl_from_namelist(parts)
+        if child in self.namespace:
+            return self._namespace[child]
+        elif child in self.named_itemspaces:
+            return self._named_itemspaces[child]
         else:
-            if child in self.namespace:
-                return self._namespace[child]
-            elif child in self.named_itemspaces:
-                return self._named_itemspaces[child]
-            else:
-                raise RuntimeError("name '%s' not found" % child)
+            raise RuntimeError(f"name '{child}' not found")
 
     # ----------------------------------------------------------------------
     # repr methods
@@ -1508,7 +1479,7 @@ class BaseSpaceImpl(*_base_space_impl_base):
 
     def repr_parent(self):
         if self.parent.repr_parent():
-            return self.parent.repr_parent() + "." + self.parent.repr_self()
+            return f"{self.parent.repr_parent()}.{self.parent.repr_self()}"
         else:
             return self.parent.repr_self()
 
@@ -1601,10 +1572,7 @@ class UserSpaceImpl(*_user_space_impl_base):
 
         self.cellsnamer = AutoNamer("Cells")
 
-        if isinstance(source, ModuleType):
-            self.source = source.__name__
-        else:
-            self.source = source
+        self.source = source.__name__ if isinstance(source, ModuleType) else source
 
     def _init_own_refs(self):
         return RefDict("own_refs", self)
@@ -1631,16 +1599,17 @@ class UserSpaceImpl(*_user_space_impl_base):
 
         for name in dir(module):
             func = getattr(module, name)
-            if isinstance(func, FunctionType):
-                # Choose only the functions defined in the module.
-                if func.__module__ == module.__name__:
-                    if name in self.namespace and override:
-                        self.spmgr.change_cells_formula(
-                            self.cells[name], func)
-                        newcells[name] = self.cells[name]
-                    else:
-                        newcells[name] = self.spmgr.new_cells(
-                            self, name, func)
+            if (
+                isinstance(func, FunctionType)
+                and func.__module__ == module.__name__
+            ):
+                if name in self.namespace and override:
+                    self.spmgr.change_cells_formula(
+                        self.cells[name], func)
+                    newcells[name] = self.cells[name]
+                else:
+                    newcells[name] = self.spmgr.new_cells(
+                        self, name, func)
 
         return newcells
 
@@ -1696,7 +1665,7 @@ class UserSpaceImpl(*_user_space_impl_base):
         else:
             sig = ""
 
-        blank_func = "def _blank_func(" + sig + "): pass"
+        blank_func = f"def _blank_func({sig}): pass"
 
         source = {
             "method": "new_cells_from_excel",
@@ -1766,7 +1735,7 @@ class UserSpaceImpl(*_user_space_impl_base):
         Called from ``Space.__setattr__``
         """
         if not is_valid_name(name):
-            raise ValueError("Invalid name '%s'" % name)
+            raise ValueError(f"Invalid name '{name}'")
 
         if name in self.namespace:
             if name in self.refs:
@@ -1781,7 +1750,7 @@ class UserSpaceImpl(*_user_space_impl_base):
                 if self.cells[name].is_scalar():
                     self.cells[name].set_value((), value)
                 else:
-                    raise AttributeError("Cells '%s' is not a scalar." % name)
+                    raise AttributeError(f"Cells '{name}' is not a scalar.")
             else:
                 raise ValueError
         else:
@@ -1793,17 +1762,16 @@ class UserSpaceImpl(*_user_space_impl_base):
         ``del space.name`` by user script
         Called from ``UserSpace.__delattr__``
         """
-        if name in self.namespace:
-            if name in self.cells:
-                self.spmgr.del_cells(self, name)
-            elif name in self.spaces:
-                self.model.updater.del_defined_space(self.spaces[name])
-            elif name in self.refs:
-                self.del_ref(name)
-            else:
-                raise RuntimeError("Must not happen")
+        if name not in self.namespace:
+            raise KeyError(f"'{name}' not found in Space '{self.name}'")
+        if name in self.cells:
+            self.spmgr.del_cells(self, name)
+        elif name in self.spaces:
+            self.model.updater.del_defined_space(self.spaces[name])
+        elif name in self.refs:
+            self.del_ref(name)
         else:
-            raise KeyError("'%s' not found in Space '%s'" % (name, self.name))
+            raise RuntimeError("Must not happen")
 
     def is_dynamic(self):
         return False
@@ -1815,17 +1783,15 @@ class UserSpaceImpl(*_user_space_impl_base):
         if name in self.own_refs:
             self.model.refmgr.del_ref(self, name)
         elif name in self.is_derived():
-            raise KeyError("Derived ref '%s' cannot be deleted" % name)
+            raise KeyError(f"Derived ref '{name}' cannot be deleted")
         elif name in self.arguments:
             raise ValueError("Argument cannot be deleted")
         elif name in self.sys_refs:
-            raise ValueError("Ref '%s' cannot be deleted" % name)
+            raise ValueError(f"Ref '{name}' cannot be deleted")
         elif name in self.model.global_refs:
-            raise ValueError(
-                "Global ref '%s' cannot be deleted in space" % name
-            )
+            raise ValueError(f"Global ref '{name}' cannot be deleted in space")
         else:
-            raise KeyError("Ref '%s' does not exist" % name)
+            raise KeyError(f"Ref '{name}' does not exist")
 
     # ----------------------------------------------------------------------
     # Reloading
@@ -1877,27 +1843,25 @@ class UserSpaceImpl(*_user_space_impl_base):
             bs = [bm[name] for bm in basedict.maps
                   if name in bm and bm[name].is_defined()]
 
-            if name not in selfdict:
-
-                if attr == "cells":
-                    selfdict[name] = UserCellsImpl(
-                        space=self, name=name, formula=None,
-                        is_derived=True)
-
-                elif attr == "own_refs":
-                    selfdict[name] = ReferenceImpl(
-                        self, name, None,
-                        container=self._own_refs,
-                        is_derived=True,
-                        refmode=bs[0].refmode
-                    )
-                else:
-                    raise RuntimeError("must not happen")
-
-            else:
+            if name in selfdict:
                 # Remove & add back for reorder
                 selfdict[name] = selfdict.pop(name)
                 selfkeys.remove(name)
+
+            elif attr == "cells":
+                selfdict[name] = UserCellsImpl(
+                    space=self, name=name, formula=None,
+                    is_derived=True)
+
+            elif attr == "own_refs":
+                selfdict[name] = ReferenceImpl(
+                    self, name, None,
+                    container=self._own_refs,
+                    is_derived=True,
+                    refmode=bs[0].refmode
+                )
+            else:
+                raise RuntimeError("must not happen")
 
             if selfdict[name].is_derived():
                 selfdict[name].on_inherit(updater, bs)
@@ -1924,14 +1888,12 @@ class UserSpaceImpl(*_user_space_impl_base):
             # Select names in space but not in space's bases
 
             bases = [self] + list(self.bases)    # bases lists space's bases
-            while True:
-                if bases.pop(0) is space:
-                    break
-
+            while bases.pop(0) is not space:
+                pass
             keys = list(space.cells)
             d = {}
             for b in bases:
-                d.update(b.cells)
+                d |= b.cells
 
             for k in d:
                 try:
@@ -2103,10 +2065,7 @@ class DynamicSpaceImpl(BaseSpaceImpl):
 
     @property
     def bases(self):
-        if self._dynbase:
-            return [self._dynbase]
-        else:
-            return []
+        return [self._dynbase] if self._dynbase else []
 
     def is_derived(self):
         return True
@@ -2162,11 +2121,11 @@ class ItemSpaceImpl(DynamicSpaceImpl):
     ):
         if name is None:
             name = parent.itemspacenamer.get_next(base.named_itemspaces)
-        elif (is_valid_name(name)
-              and name not in parent.namespace
-              and name not in parent.named_itemspaces):
-            pass
-        else:
+        elif (
+            not is_valid_name(name)
+            or name in parent.namespace
+            or name in parent.named_itemspaces
+        ):
             raise ValueError("invalid name")
 
         DynamicSpaceImpl.__init__(
@@ -2211,16 +2170,15 @@ class ItemSpaceImpl(DynamicSpaceImpl):
 
     def repr_self(self, add_params=True):
 
-        if add_params:
-            args = [repr(arg) for arg in get_interfaces(self.argvalues)]
-            param = ", ".join(args)
-            return "%s[%s]" % (self.parent.name, param)
-        else:
+        if not add_params:
             return self.name
+        args = [repr(arg) for arg in get_interfaces(self.argvalues)]
+        param = ", ".join(args)
+        return f"{self.parent.name}[{param}]"
 
     @property
     def evalrepr(self):
         """Evaluable repr"""
         args = [repr(arg) for arg in get_interfaces(self.argvalues)]
         param = ", ".join(args)
-        return "%s(%s)" % (self.parent.evalrepr, param)
+        return f"{self.parent.evalrepr}({param})"

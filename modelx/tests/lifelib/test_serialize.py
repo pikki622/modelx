@@ -74,7 +74,7 @@ def test_with_lifelib(testpaths, project):
 
     import lifelib
 
-    testproj = project + "_test"
+    testproj = f"{project}_test"
     projpath = build_path / testproj
 
     if lifelib.VERSION > (0, 0, 14):
@@ -94,7 +94,7 @@ def test_with_lifelib(testpaths, project):
         if lifelib.VERSION > (0, 0, 14):
             module = importlib.import_module(project)
         else:
-            module = importlib.import_module(testproj + "." + project)
+            module = importlib.import_module(f"{testproj}.{project}")
 
         with SysPath(str(projpath)):
 

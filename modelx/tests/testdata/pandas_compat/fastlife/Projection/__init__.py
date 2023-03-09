@@ -112,10 +112,7 @@ def PolsDeath(t):
 
 def PolsIF_End(t):
     """Number of policies: End of period"""
-    if t == 0:
-        return 0 # pol.PolicyCount()
-    else:
-        return PolsIF_Beg1(t-1) - PolsDeath(t-1) - PolsSurr(t-1)
+    return 0 if t == 0 else PolsIF_Beg1(t-1) - PolsDeath(t-1) - PolsSurr(t-1)
 
 
 def PolsMaturity(t):
@@ -168,10 +165,9 @@ def PV_PremIncome(t):
 
     if not exist.any():
         return 0
-    else:
-        result = exist * PremIncome(t) + PV_PremIncome(t+1) / (1 + DiscRate(t))
-        result.name = "PV_PremIncome"
-        return result
+    result = exist * PremIncome(t) + PV_PremIncome(t+1) / (1 + DiscRate(t))
+    result.name = "PV_PremIncome"
+    return result
 
 
 def last_t():
@@ -197,10 +193,9 @@ def PV_BenefitTotal(t):
 
     if not exist.any():
         return 0
-    else:
-        result = (-BenefitTotal(t) + PV_BenefitTotal(t+1)) / (1 + DiscRate(t))
-        result.name = "PV_BenefitTotal"
-        return result
+    result = (-BenefitTotal(t) + PV_BenefitTotal(t+1)) / (1 + DiscRate(t))
+    result.name = "PV_BenefitTotal"
+    return result
 
 
 # ---------------------------------------------------------------------------

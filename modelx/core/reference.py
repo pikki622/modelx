@@ -92,10 +92,7 @@ class ReferenceImpl(Derivable, Impl):
             container.set_item(name, self)
 
         self.refmode = refmode
-        if refmode == "absolute":
-            self.is_relative = False
-        else:   # 'auto' or 'relative'
-            self.is_relative = True
+        self.is_relative = refmode != "absolute"
 
     def on_delete(self):
         pass
@@ -122,9 +119,8 @@ class ReferenceImpl(Derivable, Impl):
             state["interface"] = builtins
         elif isinstance(state["interface"], BaseIOSpec):
             state["interface"] = state["interface"].value
-        else:
-            if isinstance(state["interface"], _BasePickler):
-                state["interface"] = state["interface"].restore()
+        elif isinstance(state["interface"], _BasePickler):
+            state["interface"] = state["interface"].restore()
 
         for attr in state:
             setattr(self, attr, state[attr])
@@ -134,7 +130,7 @@ class ReferenceImpl(Derivable, Impl):
 
     def repr_parent(self):
         if self.parent.repr_parent():
-            return self.parent.repr_parent() + "." + self.parent.repr_self()
+            return f"{self.parent.repr_parent()}.{self.parent.repr_self()}"
         else:
             return self.parent.repr_self()
 
@@ -161,18 +157,16 @@ class ReferenceImpl(Derivable, Impl):
                 is_relative, interface = updater.get_relative_interface(
                     self.parent,
                     bases[0])
-                if self.refmode == "auto":
+                if (
+                    self.refmode != "auto"
+                    and self.refmode == "relative"
+                    and is_relative
+                    or self.refmode == "auto"
+                ):
                     self.is_relative = is_relative
                     self.interface = interface
                 elif self.refmode == "relative":
-                    if is_relative:
-                        self.is_relative = is_relative
-                        self.interface = interface
-                    else:
-                        raise ValueError(
-                            "Relative reference %s out of scope" %
-                            self.get_fullname()
-                        )
+                    raise ValueError(f"Relative reference {self.get_fullname()} out of scope")
                 else:
                     raise ValueError("must not happen")
         else:

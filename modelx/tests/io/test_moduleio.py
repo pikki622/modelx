@@ -183,8 +183,8 @@ def test_update_path(tmp_path, parent, save_meth):
     p.model.get_spec(module_).path = "Parent/Foo1"
 
     def assert_path(m_or_s, module_, nth):
-        assert m_or_s.model.get_spec(module_).path == pathlib.Path("Parent/Foo%s" % nth)
-        assert m_or_s.model.iospecs[0].path == pathlib.Path("Parent/Foo%s" % nth)
+        assert m_or_s.model.get_spec(module_).path == pathlib.Path(f"Parent/Foo{nth}")
+        assert m_or_s.model.iospecs[0].path == pathlib.Path(f"Parent/Foo{nth}")
         assert_module(m_or_s)
 
     assert_path(p, module_, "1")

@@ -83,17 +83,8 @@ class TraceGraph(nx.DiGraph):
 
     def get_nodes_with(self, obj):
         """Return nodes with `obj`."""
-        result = set()
-
-        if nx.__version__[0] == "1":
-            nodes = self.nodes_iter()
-        else:
-            nodes = self.nodes
-
-        for node in nodes:
-            if node[OBJ] == obj:
-                result.add(node)
-        return result
+        nodes = self.nodes_iter() if nx.__version__[0] == "1" else self.nodes
+        return {node for node in nodes if node[OBJ] == obj}
 
     def get_startnodes_from(self, node):
         if node in self:
@@ -499,12 +490,12 @@ class Model(IOSpecOperation, EditableParent):
         result = []
 
         for valid, refs in self._impl.refmgr._valid_to_refs.items():
-            info = {}
-            info["value"] = refs[0].interface
-            info["spec"] = self._impl.system.iomanager.get_spec_from_value(
-                io_group=self,
-                value=refs[0].interface
-            )
+            info = {
+                "value": refs[0].interface,
+                "spec": self._impl.system.iomanager.get_spec_from_value(
+                    io_group=self, value=refs[0].interface
+                ),
+            }
             info["refs"] = self._get_refs(info["value"])
             result.append(info)
 
@@ -538,10 +529,7 @@ class Model(IOSpecOperation, EditableParent):
                     with self._impl.system.trace_stack(maxlen=None):
                         obj.get_value_from_key(key)
                         tracestack = self._impl.system.callstack.tracestack
-                        for trace in tracestack:
-                            if trace[0] == "ENTER":
-                                calculated.append(trace[3])
-
+                        calculated.extend(trace[3] for trace in tracestack if trace[0] == "ENTER")
                     calc_targets.append(n._impl)
 
             result = self._impl.get_calcsteps(
@@ -659,6 +647,12 @@ class Model(IOSpecOperation, EditableParent):
                         node = n._impl
                         node[OBJ].get_value_from_key(node[KEY])
 
+                elif action == "clear":
+                    for n in nodes:
+                        node = n._impl
+                        node[OBJ].clear_value_at(node[KEY])
+
+                    gc.collect()
                 elif action == "paste":
                     node_value_pairs = []
                     for n in nodes:
@@ -669,12 +663,6 @@ class Model(IOSpecOperation, EditableParent):
                     for node, value in node_value_pairs:
                         node[OBJ].set_value_from_key(node[KEY], value)
 
-                elif action == "clear":
-                    for n in nodes:
-                        node = n._impl
-                        node[OBJ].clear_value_at(node[KEY])
-
-                    gc.collect()
                 else:
                     raise RuntimeError("must not happen")
         finally:
@@ -758,24 +746,19 @@ class TraceManager:
             accum_nodes = set(ordered[:stop])
             for n in pasted.copy():
 
-                paste = False
-                for suc in subgraph.successors(n):
-                    if suc not in accum_nodes:
-                        paste = True
-                        break
-
+                paste = any(suc not in accum_nodes for suc in subgraph.successors(n))
                 if not paste:
                     cur_clear.append(n)
                     pasted.remove(n)
 
-            for n in cur_paste:
-                if n not in cur_targets:
-                    pasted.append(n)
-
-            result.append(['calc', [ItemNode(n) for n in cur_block]])
-            result.append(['paste', [ItemNode(n) for n in reversed(cur_paste)]])
-            result.append(['clear', [ItemNode(n) for n in cur_clear]])
-
+            pasted.extend(n for n in cur_paste if n not in cur_targets)
+            result.extend(
+                (
+                    ['calc', [ItemNode(n) for n in cur_block]],
+                    ['paste', [ItemNode(n) for n in reversed(cur_paste)]],
+                    ['clear', [ItemNode(n) for n in cur_clear]],
+                )
+            )
             step += 1
 
         assert not pasted
@@ -809,7 +792,7 @@ class ModelImpl(*_model_impl_base):
         if not name:
             name = system._modelnamer.get_next(system.models)
         elif not is_valid_name(name):
-            raise ValueError("Invalid name '%s'." % name)
+            raise ValueError(f"Invalid name '{name}'.")
 
         Impl.__init__(self, system=system, parent=None, name=name)
         EditableParentImpl.__init__(self)
@@ -835,14 +818,13 @@ class ModelImpl(*_model_impl_base):
 
     def rename(self, name):
         """Rename self. Must be called only by its system."""
-        if is_valid_name(name):
-            if name not in self.system.models:
-                self.name = name
-                return True  # Rename success
-            else:  # Model name already exists
-                return False
-        else:
-            raise ValueError("Invalid name '%s'." % name)
+        if not is_valid_name(name):
+            raise ValueError(f"Invalid name '{name}'.")
+        if name not in self.system.models:
+            self.name = name
+            return True  # Rename success
+        else:  # Model name already exists
+            return False
 
     def repr_self(self, add_params=True):
         return self.name
@@ -872,10 +854,7 @@ class ModelImpl(*_model_impl_base):
         """Retrieve an object by a dotted name relative to the model."""
         parts = name.split(".")
         space = self.spaces[parts.pop(0)]
-        if parts:
-            return space.get_impl_from_namelist(parts)
-        else:
-            return space
+        return space.get_impl_from_namelist(parts) if parts else space
 
     # ----------------------------------------------------------------------
     # Serialization by pickle
@@ -894,13 +873,10 @@ class ModelImpl(*_model_impl_base):
             mapping = {}
             for node in graph:
                 name = node[OBJ].idstr
-                if node_has_key(node):
-                    mapping[node] = (name, node[KEY])
-                else:
-                    mapping[node] = name
+                mapping[node] = (name, node[KEY]) if node_has_key(node) else name
             state[gname] = nx.relabel_nodes(graph, mapping)
 
-        state["ios"] = list(spec.io for spec in self.refmgr.specs)
+        state["ios"] = [spec.io for spec in self.refmgr.specs]
         return state
 
     def __setstate__(self, state):
@@ -915,10 +891,7 @@ class ModelImpl(*_model_impl_base):
         BaseParentImpl.restore_state(self)
         mapping = {}
         for node in self.tracegraph:
-            if isinstance(node, tuple):
-                name, key = node
-            else:
-                name, key = node, None
+            name, key = node if isinstance(node, tuple) else (node, None)
             cells = self.get_impl_from_name(name)
             mapping[node] = get_node(cells, key, None)
 
@@ -968,7 +941,7 @@ class ModelImpl(*_model_impl_base):
 
     def set_attr(self, name, value, refmode=None):
         if name in self.spaces:
-            raise KeyError("Space named '%s' already exist" % self.name)
+            raise KeyError(f"Space named '{self.name}' already exist")
         elif name in self.global_refs:
             self.refmgr.change_ref(self, name, value)
         else:
@@ -981,7 +954,7 @@ class ModelImpl(*_model_impl_base):
         elif name in self.global_refs:
             self.refmgr.del_ref(self, name)
         else:
-            raise KeyError("Name '%s' not defined" % name)
+            raise KeyError(f"Name '{name}' not defined")
 
     # ----------------------------------------------------------------------
     # Dynamic base manager
@@ -1018,10 +991,7 @@ def trim_left(node, trimed_len):
 
 
 def trim_right(node, trimed_len):
-    if trimed_len == 0:
-        return node
-    else:
-        return ".".join(node.split(".")[:-trimed_len])
+    return node if trimed_len == 0 else ".".join(node.split(".")[:-trimed_len])
 
 
 def _get_shared_part(a_node, b_node, from_left=True):
@@ -1101,10 +1071,7 @@ class SpaceGraph(nx.DiGraph):
         return accum
 
     def max_index(self, node):
-        return max(
-            [self.edges[e]["index"] for e in self.in_edges(node)],
-            default=0
-        )
+        return max((self.edges[e]["index"] for e in self.in_edges(node)), default=0)
 
     def get_mro(self, node):
         """Calculate the Method Resolution Order of bases using the C3 algorithm.
@@ -1132,8 +1099,7 @@ class SpaceGraph(nx.DiGraph):
 
             for seq in non_empty:  # Find merge candidates among seq heads.
                 candidate = seq[0]
-                not_head = [s for s in non_empty if candidate in s[1:]]
-                if not_head:
+                if not_head := [s for s in non_empty if candidate in s[1:]]:
                     # Reject the candidate.
                     candidate = None
                 else:
@@ -1199,9 +1165,8 @@ class SpaceGraph(nx.DiGraph):
         for n in succs:
             if self._is_linealrel(start, n):
                 return False
-            else:
-                if not self.check_cyclic(start, n):
-                    return False
+            if not self.check_cyclic(start, n):
+                return False
 
         return True
 
@@ -1211,16 +1176,20 @@ class SpaceGraph(nx.DiGraph):
         tlen, hlen = len_node(tail), len_node(head)
 
         if tail:
-            bases = list(trim_left(n, tlen)
-                    for n in self.visit_treenodes(tail, include_self=False))
+            bases = [
+                trim_left(n, tlen)
+                for n in self.visit_treenodes(tail, include_self=False)
+            ]
         else:
             bases = []
 
-        subs = list(trim_left(n, hlen)
-                   for n in self.visit_treenodes(head, include_self=False))
+        subs = [
+            trim_left(n, hlen)
+            for n in self.visit_treenodes(head, include_self=False)
+        ]
 
         # missing = bases - subs
-        derived = list((tail + "." + n, head + "." + n) for n in bases)
+        derived = [(f"{tail}.{n}", f"{head}.{n}") for n in bases]
         derived.insert(0, (tail, head))
 
         for e in derived:
@@ -1242,12 +1211,13 @@ class SpaceGraph(nx.DiGraph):
 
         for n in reversed(subs):
             if n not in bases:
-                n = head + "." + n
-                if self.nodes[n]["mode"] == "derived":
-                    if not list(self.predecessors(n)):
-                        if on_remove:
-                            on_remove(self, n)
-                        self.remove_node(n)
+                n = f"{head}.{n}"
+                if self.nodes[n]["mode"] == "derived" and not list(
+                    self.predecessors(n)
+                ):
+                    if on_remove:
+                        on_remove(self, n)
+                    self.remove_node(n)
 
     def subgraph_from_nodes(self, nodes):
         """Get sub graph with nodes reachable form ``node``"""
@@ -1266,7 +1236,7 @@ class SpaceGraph(nx.DiGraph):
 
     def subgraph_from_state(self, state):
         """Get sub graph with nodes with ``state``"""
-        nodes = set(n for n in self if self.nodes[n]["state"] == state)
+        nodes = {n for n in self if self.nodes[n]["state"] == state}
         return self.copy_as_spacegraph(self.subgraph(nodes))
 
     def get_updated(self, subgraph, nodeset=None, keep_self=True,
@@ -1278,11 +1248,7 @@ class SpaceGraph(nx.DiGraph):
         if nodeset is None:
             nodeset = subgraph.nodes
 
-        if keep_self:
-            src = self.copy_as_spacegraph(self)
-        else:
-            src = self
-
+        src = self.copy_as_spacegraph(self) if keep_self else self
         for n in subgraph.nodes:
             del subgraph.nodes[n]["state"]
 
@@ -1348,9 +1314,11 @@ class SpaceGraph(nx.DiGraph):
             n = que.pop(0)
             if n != node or include_self:
                 yield level, n
-            childs = [ch for ch in self.nodes
-                      if ch[:len(n) + 1] == (n + ".")
-                      and len_node(n) + 1 == len_node(ch)]
+            childs = [
+                ch
+                for ch in self.nodes
+                if ch[: len(n) + 1] == f"{n}." and len_node(n) + 1 == len_node(ch)
+            ]
             que += childs
             level += 1
 
@@ -1360,7 +1328,7 @@ class SpaceGraph(nx.DiGraph):
             yield n
 
     def get_endpoints(self, nodes, edge="any"):
-        return set(n for n in nodes if self._is_endpoint(n, edge))
+        return {n for n in nodes if self._is_endpoint(n, edge)}
 
     def _get_otherends(self, nodes, edge="any"):
         otherends = [set(self._get_neighbors(n, edge)) for n in nodes]
@@ -1415,26 +1383,24 @@ class SpaceGraph(nx.DiGraph):
         Overriding fresh_copy method is also needed.
         G can be a sub graph view.
         """
-        if _nxver < (2, 2):
-            # modified from https://github.com/networkx/networkx/blob/networkx-2.1/networkx/classes/digraph.py#L1080-L1167
-            # See LICENSES/NETWORKX_LICENSE.txt
-
-            def copy(klass, graph, as_view=False):
-
-                if as_view is True:
-                    return nx.graphviews.DiGraphView(graph)
-                G = klass()
-                G.graph.update(graph.graph)
-                G.add_nodes_from((n, d.copy()) for n, d in graph._node.items())
-                G.add_edges_from((u, v, datadict.copy())
-                                 for u, nbrs in graph._adj.items()
-                                 for v, datadict in nbrs.items())
-                return G
-
-            return copy(type(self), g)
-
-        else:
+        if _nxver >= (2, 2):
             return type(self).copy(g)
+        # modified from https://github.com/networkx/networkx/blob/networkx-2.1/networkx/classes/digraph.py#L1080-L1167
+        # See LICENSES/NETWORKX_LICENSE.txt
+
+        def copy(klass, graph, as_view=False):
+
+            if as_view is True:
+                return nx.graphviews.DiGraphView(graph)
+            G = klass()
+            G.graph.update(graph.graph)
+            G.add_nodes_from((n, d.copy()) for n, d in graph._node.items())
+            G.add_edges_from((u, v, datadict.copy())
+                             for u, nbrs in graph._adj.items()
+                             for v, datadict in nbrs.items())
+            return G
+
+        return copy(type(self), g)
 
     def get_relative(self, subspace, basespace, basevalue):
 
@@ -1442,19 +1408,11 @@ class SpaceGraph(nx.DiGraph):
         if not shared_parent:
             return None
         shared_desc = get_shared_desc(subspace, basespace)
-        if shared_desc:
-            shared_desc = shared_desc.split(".")
-        else:
-            shared_desc = []
-
+        shared_desc = shared_desc.split(".") if shared_desc else []
         subroot = trim_right(subspace, len(shared_desc))
         basroot = trim_right(basespace, len(shared_desc))
 
-        while True:
-
-            if basroot in self.get_mro(subroot):
-                break
-
+        while basroot not in self.get_mro(subroot):
             if shared_desc:
                 n = shared_desc.pop(0)
                 subroot = ".".join(subroot.split(".") + [n])
@@ -1463,9 +1421,8 @@ class SpaceGraph(nx.DiGraph):
                 raise RuntimeError("must not happen")
 
         if basroot == shared_parent or has_parent(shared_parent, basroot):
-            relative_part = trim_left(basevalue, len_node(basroot))
-            if relative_part:
-                return subroot + "." + relative_part
+            if relative_part := trim_left(basevalue, len_node(basroot)):
+                return f"{subroot}.{relative_part}"
             else:
                 return subroot
         else:
@@ -1479,14 +1436,10 @@ class Instruction:
         self.func = func
         self.args = args
         self.arghook = arghook
-        self.kwargs = kwargs if kwargs else {}
+        self.kwargs = kwargs or {}
 
     def execute(self):
-        if self.arghook:
-            args, kwargs = self.arghook(self)
-        else:
-            args, kwargs = self.args, self.kwargs
-
+        args, kwargs = self.arghook(self) if self.arghook else (self.args, self.kwargs)
         return self.func(*args, **kwargs)
 
     @property
@@ -1494,7 +1447,7 @@ class Instruction:
         return self.func.__name__
 
     def __repr__(self):
-        return "<Instruction: %s>" % self.funcname
+        return f"<Instruction: {self.funcname}>"
 
 
 class InstructionList(list):
@@ -1530,18 +1483,17 @@ class SharedSpaceOperations:
             return name not in parent.namespace
 
         sub = self._find_name_in_subs(parent, name)   # start from parent
-        if sub is None:
-            return True
-        elif isinstance(sub, klass) and overwrite:
-            return True
-        else:
-            return False
+        return bool(sub is None or isinstance(sub, klass) and overwrite)
 
     def _find_name_in_subs(self, parent, name):
-        for subspace in self._get_subs(parent, skip_self=False):
-            if name in subspace.namespace:
-                return subspace._namespace.fresh[name]
-        return None
+        return next(
+            (
+                subspace._namespace.fresh[name]
+                for subspace in self._get_subs(parent, skip_self=False)
+                if name in subspace.namespace
+            ),
+            None,
+        )
 
     def _set_defined(self, node):
 
@@ -1598,10 +1550,7 @@ class SharedSpaceOperations:
         basespace = base.parent.idstr
         basevalue = base.interface._impl.idstr
 
-        subimpl = self._graph.get_relative(
-            parent.idstr, basespace, basevalue)
-
-        if subimpl:
+        if subimpl := self._graph.get_relative(parent.idstr, basespace, basevalue):
             return True, self.model.get_impl_from_name(subimpl).interface
         else:
             return False, base.interface
@@ -1615,20 +1564,19 @@ class SpaceManager(SharedSpaceOperations):
         parent = space.parent
         if not self._can_add(
                 parent, name, UserSpaceImpl, overwrite=False):
-            raise ValueError("Cannot rename '%s' to '%s'" % (space.name, name))
+            raise ValueError(f"Cannot rename '{space.name}' to '{name}'")
 
         # Check space is not derived or overwritten
         for e in self._graph.in_edges(space.idstr):
             if self._graph.edges[e]["mode"] == "derived":
                 t, h = e
-                raise ValueError(
-                    "'%s' has derived base '%s'" % (h, t))
+                raise ValueError(f"'{h}' has derived base '{t}'")
 
         # Derived/Overwritten spaces are renamed
-        subspaces = list(
-            self._graph.to_space(n) for n in self._graph.get_derived_subs(
-                space.idstr)
-        )
+        subspaces = [
+            self._graph.to_space(n)
+            for n in self._graph.get_derived_subs(space.idstr)
+        ]
 
         # Create name mapping
         mapping = {}
@@ -1672,7 +1620,7 @@ class SpaceManager(SharedSpaceOperations):
         # FIX: Creating a Cells of the same name in ``space``
 
         if not self._can_add(space, name, CellsImpl, overwrite=overwrite):
-            raise ValueError("Cannot create cells '%s'" % name)
+            raise ValueError(f"Cannot create cells '{name}'")
 
         self._set_defined(space.idstr)
         space.set_defined()
@@ -1688,22 +1636,21 @@ class SpaceManager(SharedSpaceOperations):
         for subspace in self._get_subs(space):
             if name in subspace.cells:
                 break
-            else:
-                subspace.clear_subs_rootitems()
-                derived = UserCellsImpl(
-                    space=subspace,
-                    base=cells, is_derived=True, add_to_space=False
-                )
-                base_cells = {}
-                for b in reversed(subspace.bases):
-                    base_cells.update(b.cells)
+            subspace.clear_subs_rootitems()
+            derived = UserCellsImpl(
+                space=subspace,
+                base=cells, is_derived=True, add_to_space=False
+            )
+            base_cells = {}
+            for b in reversed(subspace.bases):
+                base_cells |= b.cells
 
-                idx = list(base_cells).index(name)
-                cells_after = list(subspace.cells)[idx:]
-                subspace._cells.set_item(name, derived)
+            idx = list(base_cells).index(name)
+            cells_after = list(subspace.cells)[idx:]
+            subspace._cells.set_item(name, derived)
 
-                for k in cells_after:
-                    subspace._cells[k] = subspace._cells.pop(k)
+            for k in cells_after:
+                subspace._cells[k] = subspace._cells.pop(k)
 
 
         return cells
@@ -1725,10 +1672,10 @@ class SpaceManager(SharedSpaceOperations):
     def rename_cells(self, cells, name):
         """Renames the Cells name"""
         if not is_valid_name(name):
-            raise ValueError("name '%s' is invalid" % name)
+            raise ValueError(f"name '{name}' is invalid")
 
         if not self._can_add(cells.parent, name, CellsImpl, overwrite=True):
-            raise ValueError("cannot create cells '%s'" % name)
+            raise ValueError(f"cannot create cells '{name}'")
 
         if cells.bases:
             raise ValueError("'%s' is a sub Cells of '%s'" % (
@@ -1773,24 +1720,22 @@ class SpaceManager(SharedSpaceOperations):
             for subspace in self._get_subs(space):
                 if name in subspace.own_refs:
                     break
-                else:
-                    subvalue = self._graph.get_relative(
-                        subspace.idstr, space.idstr,
-                        basevalue)
-                    if not subvalue:
-                        raise ValueError(
-                            "Cannot create relative reference for '%s' in '%s'"
-                            % (basevalue, subspace.idstr)
-                        )
+                subvalue = self._graph.get_relative(
+                    subspace.idstr, space.idstr,
+                    basevalue)
+                if not subvalue:
+                    raise ValueError(
+                        f"Cannot create relative reference for '{basevalue}' in '{subspace.idstr}'"
+                    )
 
     def new_ref(self, space, name, value, refmode):
 
         other = self._find_name_in_subs(space, name)
         if other is not None:
             if not isinstance(other, ReferenceImpl):
-                raise ValueError("Cannot create reference '%s'" % name)
+                raise ValueError(f"Cannot create reference '{name}'")
             elif other not in self.model.global_refs.values():
-                raise ValueError("Cannot create reference '%s'" % name)
+                raise ValueError(f"Cannot create reference '{name}'")
 
         self._check_subs_relrefs(space, name, value, refmode)
         self._set_defined(space.idstr)
@@ -1802,10 +1747,13 @@ class SpaceManager(SharedSpaceOperations):
             is_relative = False
             if name in subspace.own_refs:
                 break
-            if isinstance(value, Interface) and value._is_valid():
-                if refmode == "auto" or refmode == "relative":
-                    is_relative, value = self.get_relative_interface(
-                        subspace, space.own_refs[name])
+            if (
+                isinstance(value, Interface)
+                and value._is_valid()
+                and refmode in ["auto", "relative"]
+            ):
+                is_relative, value = self.get_relative_interface(
+                    subspace, space.own_refs[name])
             ref = subspace.on_create_ref(name, value, is_derived=True,
                                    refmode=refmode)
             ref.is_relative = is_relative
@@ -1819,7 +1767,7 @@ class SpaceManager(SharedSpaceOperations):
         self._set_defined(space.idstr)
         space.set_defined()
 
-        is_relative = False if refmode == "absolute" else True
+        is_relative = refmode != "absolute"
 
         space.on_change_ref(name, value, is_derived=False, refmode=refmode,
                             is_relative=is_relative)
@@ -1831,11 +1779,13 @@ class SpaceManager(SharedSpaceOperations):
                 break
             elif subref.defined_bases[0] is not space.own_refs[name]:
                 break
-            if isinstance(value, Interface) and value._is_valid():
-                if (refmode == "auto"
-                        or refmode == "relative"):
-                    is_relative, value = self.get_relative_interface(
-                        subspace, space.own_refs[name])
+            if (
+                isinstance(value, Interface)
+                and value._is_valid()
+                and refmode in ["auto", "relative"]
+            ):
+                is_relative, value = self.get_relative_interface(
+                    subspace, space.own_refs[name])
             ref = subspace.on_change_ref(name, value,
                                          is_derived=True, refmode=refmode,
                                          is_relative=is_relative)
@@ -1856,7 +1806,7 @@ class SpaceManager(SharedSpaceOperations):
             assert v.idstr in nodes
             assert v is self._graph.nodes[v.idstr]["space"]
             nodes.remove(v.idstr)
-            spaces.update(v.named_spaces)
+            spaces |= v.named_spaces
 
         assert not nodes # Check all nodes are reached
 
@@ -1888,7 +1838,8 @@ class SpaceUpdater(SharedSpaceOperations):
     def _update_manager(self):
 
         self._inheritance.remove_nodes_from(
-            set(n for n in self._inheritance if n not in self._graph))
+            {n for n in self._inheritance if n not in self._graph}
+        )
 
         # Add derived spaces back to self._inheritance
         created = self._graph.subgraph_from_state("created")
@@ -1911,11 +1862,7 @@ class SpaceUpdater(SharedSpaceOperations):
 
         parent_node, name = split_node(node)
 
-        if parent_node:
-            parent = self._graph.to_space(parent_node)
-        else:
-            parent =self.model
-
+        parent = self._graph.to_space(parent_node) if parent_node else self.model
         space = UserSpaceImpl(
             parent,
             name,
@@ -2006,19 +1953,19 @@ class SpaceUpdater(SharedSpaceOperations):
                     break
 
         elif not self.manager._can_add(parent, name, UserSpaceImpl):
-            raise ValueError("Cannot create space '%s'" % name)
+            raise ValueError(f"Cannot create space '{name}'")
 
         if not prefix and not is_valid_name(name):
-            raise ValueError("Invalid name '%s'." % name)
+            raise ValueError(f"Invalid name '{name}'.")
 
         if bases is None:
             bases = []
         elif isinstance(bases, UserSpaceImpl):
             bases = [bases]
 
-        node = name if parent.is_model() else parent.idstr + "." + name
+        node = name if parent.is_model() else f"{parent.idstr}.{name}"
 
-        spaces = [s for s in bases]
+        spaces = list(bases)
         if not parent.is_model():
             spaces.insert(0, parent)
 
@@ -2099,7 +2046,7 @@ class SpaceUpdater(SharedSpaceOperations):
 
         for base in [node] + basenodes:
             if base not in self.manager._inheritance:
-                raise ValueError("Space '%s' not found" % base)
+                raise ValueError(f"Space '{base}' not found")
 
         self._init_subgraphs([space] + bases)
 
@@ -2143,9 +2090,8 @@ class SpaceUpdater(SharedSpaceOperations):
                     namechain.append(set(getattr(space, attr).keys()))
                 members[attr] = set().union(*namechain)
 
-            conflict = set().intersection(*[n for n in members.values()])
-            if conflict:
-                raise NameError("name conflict: %s" % conflict)
+            if conflict := set().intersection(*list(members.values())):
+                raise NameError(f"name conflict: {conflict}")
 
         self._instructions.execute()
         self._update_manager()
@@ -2157,7 +2103,7 @@ class SpaceUpdater(SharedSpaceOperations):
 
         for base in [node] + basenodes:
             if base not in self.manager._inheritance:
-                raise ValueError("Space '%s' not found" % base)
+                raise ValueError(f"Space '{base}' not found")
 
         self._init_subgraphs([space] + bases)
 
@@ -2197,9 +2143,8 @@ class SpaceUpdater(SharedSpaceOperations):
                     namechain.append(set(getattr(space, attr).keys()))
                 members[attr] = set().union(*namechain)
 
-            conflict = set().intersection(*[n for n in members.values()])
-            if conflict:
-                raise NameError("name conflict: %s" % conflict)
+            if conflict := set().intersection(*list(members.values())):
+                raise NameError(f"name conflict: {conflict}")
 
         self._instructions.execute()
         self._update_manager()
@@ -2207,14 +2152,12 @@ class SpaceUpdater(SharedSpaceOperations):
     def del_defined_space(self, space):
 
         if space.is_derived():
-            raise ValueError(
-                "%s has derived spaces" % repr(space.interface)
-            )
+            raise ValueError(f"{repr(space.interface)} has derived spaces")
 
         node = space.idstr
 
         if node not in self.manager._inheritance:
-            raise ValueError("Space '%s' not found" % node)
+            raise ValueError(f"Space '{node}' not found")
         elif self.manager._inheritance.nodes[node]["mode"] == "derived":
             raise ValueError("cannot delete derived space")
 
@@ -2222,7 +2165,7 @@ class SpaceUpdater(SharedSpaceOperations):
         succs = list(self._inheritance.successors(node))
 
         # Remove node and its child tree
-        nodes_removed = list()
+        nodes_removed = []
         for child in self._inheritance.visit_treenodes(node):
             nodes_removed.append(child)
             self._remove_hook(self._inheritance, child)
@@ -2266,7 +2209,7 @@ class SpaceUpdater(SharedSpaceOperations):
                 parent, source, name, defined_only
             )
         else:
-            raise ValueError("Cannot create space '%s'" % name)
+            raise ValueError(f"Cannot create space '{name}'")
 
     def _copy_space_recursively(
             self, parent, source, name, defined_only):
@@ -2325,7 +2268,7 @@ class ReferenceManager:
 
     @property
     def values(self):
-        return list(ref[0].interface for ref in self._valid_to_refs.values())
+        return [ref[0].interface for ref in self._valid_to_refs.values()]
 
     @property
     def specs(self):
@@ -2373,11 +2316,9 @@ class ReferenceManager:
         refs.remove(ref)
         if not refs:
             del self._valid_to_refs[valid]
-            spec = self._manager.get_spec_from_value(
-                io_group=self._model.interface,
-                value=val
-            )
-            if spec:
+            if spec := self._manager.get_spec_from_value(
+                io_group=self._model.interface, value=val
+            ):
                 self._manager.del_spec(spec)
 
     def change_ref(self, impl, name, value, refmode=None):
@@ -2395,13 +2336,14 @@ class ReferenceManager:
             raise RuntimeError("must not happen")
 
         refs = self._valid_to_refs.get(prev_valid, None)
-        if refs is not None:        # None in case prev_ref is derived
+        if refs is not None:    # None in case prev_ref is derived
             if prev_ref in refs:
                 refs.remove(prev_ref)
             if not refs:    # ref is empty
                 del self._valid_to_refs[prev_valid]
-                spec = self._manager.get_spec_from_value(self._model.interface, prev_val)
-                if spec:
+                if spec := self._manager.get_spec_from_value(
+                    self._model.interface, prev_val
+                ):
                     self._manager.del_spec(spec)
 
         if not isinstance(value, Interface):

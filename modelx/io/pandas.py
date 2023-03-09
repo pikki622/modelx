@@ -71,9 +71,8 @@ def cellsiter_to_dataframe(cellsiter, args, drop_allna=True):
             continue  #  Ignore all NA or empty
 
         if df.index.names != [None]:
-            if isinstance(df.index, pd.MultiIndex):
-                if _pd_ver < (0, 20):
-                    df = _reset_naindex(df)
+            if isinstance(df.index, pd.MultiIndex) and _pd_ver < (0, 20):
+                df = _reset_naindex(df)
 
             df = df.reset_index()
 
@@ -144,8 +143,6 @@ def cells_to_series(cells, args):
     """
 
     paramlen = len(cells.formula.parameters)
-    is_multidx = paramlen > 1
-
     if len(cells.data) == 0:
         data = {}
         indexes = None
@@ -177,12 +174,14 @@ def cells_to_series(cells, args):
                 if arg in cells.data
             ]
         else:
-            items = [(key, value) for key, value in cells.data.items()]
+            items = list(cells.data.items())
+
+        is_multidx = paramlen > 1
 
         if not is_multidx:  # Peel 1-element tuple
             items = [(key[0], value) for key, value in items]
 
-        if len(items) == 0:
+        if not items:
             indexes, data = None, {}
         else:
             indexes, data = zip(*items)
@@ -216,7 +215,7 @@ def _get_param_names(obj, param):
             for i, n in enumerate(param_names)
         ]
 
-    if not all([is_valid_name(n) for n in param_names]):
+    if not all(is_valid_name(n) for n in param_names):
         raise ValueError("invalid parameter names")
 
     return param_names
@@ -224,11 +223,8 @@ def _get_param_names(obj, param):
 
 def _new_cells_from_series(self, series, name, param, source):
 
-    if is_valid_name(name):
-        pass
-    else:
-        if is_valid_name(series.name):
-            name = series.name
+    if not is_valid_name(name) and is_valid_name(series.name):
+        name = series.name
 
     cells = self.spmgr.new_cells(
         self,
@@ -264,10 +260,9 @@ def _overwrite_colnames(self, frame, names):
 
     for name in cells_names:
         if not is_valid_name(name):
-            raise ValueError("%s is not a valid name" % name)
-        else:
-            if name in self.namespace:
-                raise ValueError("%s already exists" % name)
+            raise ValueError(f"{name} is not a valid name")
+        if name in self.namespace:
+            raise ValueError(f"{name} already exists")
 
     return cells_names
 
@@ -278,19 +273,18 @@ def new_cells_from_pandas(self, obj, cells, param, source):
         return _new_cells_from_series(
             self, obj, cells, param, source).interface
 
-    else:
-        cells_names = _overwrite_colnames(self, obj, cells)
+    cells_names = _overwrite_colnames(self, obj, cells)
 
-        for i, c in enumerate(obj.columns):
-            _new_cells_from_series(
-                self,
-                obj[c],
-                name=cells_names[i],
-                param=param,
-                source=source
-            )
+    for i, c in enumerate(obj.columns):
+        _new_cells_from_series(
+            self,
+            obj[c],
+            name=cells_names[i],
+            param=param,
+            source=source
+        )
 
-        return self.interface.cells[cells_names]
+    return self.interface.cells[cells_names]
 
 
 def new_space_from_pandas(
@@ -308,9 +302,7 @@ def new_space_from_pandas(
             cells_params = param_names
         else:
             cells_params = normalize_params(cells_params)
-            if set(param_names) == set(cells_params):
-                pass
-            else:
+            if set(param_names) != set(cells_params):
                 raise ValueError("invalid cells_params")
     else:
         space_params = normalize_params(space_params)
@@ -319,17 +311,13 @@ def new_space_from_pandas(
         else:
             cells_params = normalize_params(cells_params)
 
-            if (set(space_params) | set(cells_params) == set(param_names)
-                    and len(set(space_params) & set(cells_params)) == 0):
-                pass
-            else:
+            if (
+                set(space_params) | set(cells_params) != set(param_names)
+                or len(set(space_params) & set(cells_params)) != 0
+            ):
                 raise ValueError("invalid cells_params")
 
-    if space_params is None:
-        space_func = None
-    else:
-        space_func = get_param_func(space_params)
-
+    space_func = None if space_params is None else get_param_func(space_params)
     newspace = self.model.updater.new_space(
         self, name=space, formula=space_func, source=source)
 

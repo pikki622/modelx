@@ -78,16 +78,11 @@ class TupleID(tuple):
         keys = []
         for key in self:
             if isinstance(key, str):
-                keys.append('"%s"' % key)
+                keys.append(f'"{key}"')
             elif isinstance(key, tuple):
-                keys.append(str(id(key)))
+                keys.append(id(key))
 
-        if len(keys) == 1:
-            keystr = "(%s,)" % keys[0]
-        else:
-            keystr = "(%s)" % ", ".join(keys)
-
-        return keystr
+        return f"({keys[0]},)" if len(keys) == 1 else f'({", ".join(keys)})'
 
     def pickle_args(self, argsdict):
         for key in self:
@@ -95,9 +90,7 @@ class TupleID(tuple):
                 id_ = id(key)
                 if id_ not in argsdict:
                     argsdict[id_] = key
-            elif isinstance(key, str):
-                pass
-            else:
+            elif not isinstance(key, str):
                 raise ValueError("unknown tuple id")
 
 

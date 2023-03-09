@@ -14,10 +14,7 @@ def testmodel():
 
     @defcells(space)
     def foo(x):
-        if x == 0:
-            return 123
-        else:
-            return foo(x - 1)
+        return 123 if x == 0 else foo(x - 1)
 
     space.bar = 3
 
@@ -74,10 +71,7 @@ def test_derived_spaces(testmodel):
 
     @defcells
     def cells_a(x):
-        if x == 0:
-            return 1
-        else:
-            return cells_a(x - 1)
+        return 1 if x == 0 else cells_a(x - 1)
 
     space_b = model.new_space(bases=space_a)
 

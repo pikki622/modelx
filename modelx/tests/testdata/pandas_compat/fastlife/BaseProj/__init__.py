@@ -49,12 +49,11 @@ _spaces = []
 
 def AccumCF(t):
     """Accumulated cashflows"""
-    if t == 0:
-        return 0
-    else:
-        return (AccumCF(t-1)
-                + IntAccumCF(t-1)
-                + NetInsurCF(t-1))
+    return (
+        0
+        if t == 0
+        else (AccumCF(t - 1) + IntAccumCF(t - 1) + NetInsurCF(t - 1))
+    )
 
 
 def AttAge(t):
@@ -251,10 +250,7 @@ def PolsIF_Beg1(t):
 
 def PolsIF_End(t):
     """Number of policies: End of period"""
-    if t == 0:
-        return 0 # pol.PolicyCount
-    else:
-        return PolsIF_Beg1(t-1) - PolsDeath(t-1) - PolsSurr(t-1)
+    return 0 if t == 0 else PolsIF_Beg1(t-1) - PolsDeath(t-1) - PolsSurr(t-1)
 
 
 def PolsLiving(t):
@@ -264,10 +260,7 @@ def PolsLiving(t):
 
 def PolsMaturity(t):
     """Number of policies: Maturity"""
-    if t == pol.PolicyTerm:
-        return PolsIF_End(t)
-    else:
-        return 0
+    return PolsIF_End(t) if t == pol.PolicyTerm else 0
 
 
 def PolsNewBiz(t):

@@ -43,8 +43,7 @@ def test_log_input(tmp_path, func_or_meth, write_or_zip):
     s["abc"].SpaceB.foo[3] = "defg"
 
     if func_or_meth == "func":
-        getattr(mx, write_or_zip + "_model")(
-            m, tmp_path / "model", log_input=True)
+        getattr(mx, f"{write_or_zip}_model")(m, tmp_path / "model", log_input=True)
     else:
         getattr(m, write_or_zip)(tmp_path / "model", log_input=True)
 

@@ -90,18 +90,16 @@ class ModelPickler(pickle.Pickler):
             return "BaseSharedIO", obj.path.as_posix(), obj.__class__, obj.persistent_args
         elif isinstance(obj, BaseNode):
 
+            if not isinstance(obj, ItemNode):
+                raise ValueError(f"invalid node{repr(obj)}")
+
             model = self.writer.model
-            if model is obj.obj.model:
-                # Replace model name with empty string
-                idtuple = ("",) + obj.obj._idtuple[1:]
-            else:
-                idtuple = obj.obj._idtuple
-
-            if isinstance(obj, ItemNode):
-                return "Node", idtuple, obj._impl[KEY]
-            else:
-                raise ValueError("invalid node" + repr(obj))
-
+            idtuple = (
+                ("",) + obj.obj._idtuple[1:]
+                if model is obj.obj.model
+                else obj.obj._idtuple
+            )
+            return "Node", idtuple, obj._impl[KEY]
         elif isinstance(obj, IOManager):
             return "IOManager", None
         elif isinstance(obj, NullImpl):

@@ -24,10 +24,7 @@ def test_get_object_from_tuple(testmodel):
 def test_defcells_withname(testmodel):
     @defcells(name="bar")
     def foo(x):
-        if x == 0:
-            return 123
-        else:
-            return bar(x - 1)
+        return 123 if x == 0 else bar(x - 1)
 
     assert foo[10] == 123
 
@@ -35,10 +32,7 @@ def test_defcells_withname(testmodel):
 def test_defcells_withspace(testmodel):
     @defcells(space=cur_space())
     def foo(x):
-        if x == 0:
-            return 123
-        else:
-            return foo(x - 1)
+        return 123 if x == 0 else foo(x - 1)
 
     assert foo[10] == 123
 
@@ -46,7 +40,7 @@ def test_defcells_withspace(testmodel):
 def test_defcells_lambda_object(testmodel):
 
     fibo = defcells(space=cur_space(), name="fibo")(
-        lambda x: x if x == 0 or x == 1 else fibo[x - 1] + fibo[x - 2]
+        lambda x: x if x in [0, 1] else fibo[x - 1] + fibo[x - 2]
     )
 
     assert fibo(10) == 55

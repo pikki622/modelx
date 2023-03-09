@@ -98,10 +98,7 @@ def test_trace_cleanup_type_error():
 
     @mx.defcells
     def foo(i):
-        if i > 0:
-            return foo(i - 1) + (1 if i < 2 else "error")
-        else:
-            return 0
+        return foo(i - 1) + (1 if i < 2 else "error") if i > 0 else 0
 
     with SuppressFormulaError():
         with pytest.raises(TypeError):

@@ -69,7 +69,7 @@ class CustomChainMap(_collections_abc.MutableMapping):
     def __iter__(self):
         d = {}
         for mapping in reversed(self.maps):
-            d.update(mapping)                   # reuses stored hash values if possible
+            d |= mapping
         return iter(d)
 
     def __contains__(self, key):

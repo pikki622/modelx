@@ -5,7 +5,7 @@ from modelx import *
 from modelx.io.excel import read_range
 
 this_dir = os.path.dirname(sys.modules[__name__].__file__)
-sample_file = this_dir + "/../data/SampleActuarialModel1.xlsx"
+sample_file = f"{this_dir}/../data/SampleActuarialModel1.xlsx"
 
 def mortality_keys(table):
 
@@ -39,10 +39,7 @@ policy.mortality_table = mortality_table
 
 @defcells(space=policy)
 def qx(x):
-    if sex == 1:
-        return mortality_table[(x, 0)]
-    else:
-        return mortality_table[(x, 1)]
+    return mortality_table[(x, 0)] if sex == 1 else mortality_table[(x, 1)]
 
 policies = model.new_space(name='policy',
                            bases=policy,

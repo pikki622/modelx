@@ -43,11 +43,7 @@ def test_new_pandas(
         tmp_path, pdobj, pstr, is_relative, save_meth, filetype):
 
     m = mx.new_model()
-    if pstr == "model":
-        parent = m
-    else:
-        parent = m.new_space()
-
+    parent = m if pstr == "model" else m.new_space()
     parent_name = parent.name
 
     file_path = "files/testpandas.xlsx" if is_relative else (
@@ -60,7 +56,7 @@ def test_new_pandas(
     parent.nestedpd = [pdobj]
 
     for nth in "12":
-        model_name = "model%s" % nth
+        model_name = f"model{nth}"
         model_loc = tmp_path / model_name
         file_loc = (model_loc / file_path) if is_relative else file_path
 
@@ -89,7 +85,7 @@ def test_new_pandas(
         assert parent.pdref is parent.nestedpd[0]
 
         pd.testing.assert_index_equal(parent.pdref.index, pdobj.index)
-        # TODO: assert parent.pdref.index.name == pdobj.index.name
+            # TODO: assert parent.pdref.index.name == pdobj.index.name
 
     m.close()
 
@@ -173,7 +169,7 @@ def test_new_pandas_mult_sheets(
             data=obj, file_type="excel", sheet=name)
 
     for nth in "12":
-        model_name = "model%s" % nth
+        model_name = f"model{nth}"
         model_loc = tmp_path / model_name
         file_loc = (model_loc / file_path) if is_relative else file_path
 
@@ -210,12 +206,15 @@ def test_update_path(tmp_path, pstr, is_relative, save_meth):
             data=obj, file_type="excel", sheet=name)
 
     for nth in "12":
-        model_name = "model%s" % nth
+        model_name = f"model{nth}"
         model_loc = tmp_path / model_name
 
         # --- Update the path of SharedIO ---
-        new_file_path = "files/testpandas%s.xlsx" % nth if is_relative else (
-            tmp_path / ("testpandas%s.xlsx" % nth) )
+        new_file_path = (
+            f"files/testpandas{nth}.xlsx"
+            if is_relative
+            else tmp_path / f"testpandas{nth}.xlsx"
+        )
 
         m.get_spec(parent.s1).path = new_file_path
         file_loc = (model_loc / new_file_path) if is_relative else new_file_path
@@ -258,7 +257,7 @@ def test_update_sheet(tmp_path, pstr, is_relative, save_meth):
             data=obj, file_type="excel", sheet=name)
 
     for nth in "12":
-        model_name = "model%s" % nth
+        model_name = f"model{nth}"
         model_loc = tmp_path / model_name
         file_loc = (model_loc / file_path) if is_relative else file_path
 
@@ -301,11 +300,7 @@ def test_update_pandas(
         tmp_path, pstr, is_relative, save_meth, filetype):
 
     m = mx.new_model()
-    if pstr == "model":
-        parent = m
-    else:
-        parent = m.new_space()
-
+    parent = m if pstr == "model" else m.new_space()
     parent_name = parent.name
 
     file_path = "files/testpandas.xlsx" if is_relative else (
@@ -326,7 +321,7 @@ def test_update_pandas(
         else:
             pd.testing.assert_frame_equal(parent.pdref, pdobj)
 
-        model_name = "model%s" % nth
+        model_name = f"model{nth}"
         model_loc = tmp_path / model_name
         file_loc = (model_loc / file_path) if is_relative else file_path
 

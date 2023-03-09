@@ -92,10 +92,7 @@ def AnnDuex(x, k, f=0):
 
     result = (Nx(x+f)) / Dx(x)
 
-    if k > 1:
-        return result - (k-1) / (2*k)
-    else:
-        return result
+    return result - (k-1) / (2*k) if k > 1 else result
 
 
 def Ax(x, f=0):
@@ -106,10 +103,7 @@ def Ax(x, f=0):
 
         \\require{enclose}{}_{f|}\\overline{A}_{x}
     """
-    if Dx(x) == 0:
-        return 0
-    else:
-        return Mx(x+f) / Dx(x)
+    return 0 if Dx(x) == 0 else Mx(x+f) / Dx(x)
 
 
 def Axn(x, n, f=0):
@@ -121,10 +115,7 @@ def Axn(x, n, f=0):
         \\require{enclose}{}_{f|}\\overline{A}^{1}_{x:\\enclose{actuarial}{n}}
 
     """
-    if Dx(x) == 0:
-        return 0
-    else:
-        return (Mx(x+f) - Mx(x+f+n)) / Dx(x)
+    return 0 if Dx(x) == 0 else (Mx(x+f) - Mx(x+f+n)) / Dx(x)
 
 
 def Cx(x):
@@ -149,27 +140,18 @@ def Exn(x, n):
         {}_{n}E_x
 
     """
-    if Dx(x) == 0:
-        return 0
-    else:
-        return Dx(x+n) / Dx(x)
+    return 0 if Dx(x) == 0 else Dx(x+n) / Dx(x)
 
 
 def Mx(x):
     """The commutation column :math:`M_x`."""
 
-    if x >= 110:
-        return Dx(x)
-    else:
-        return Mx(x+1) + Cx(x)
+    return Dx(x) if x >= 110 else Mx(x+1) + Cx(x)
 
 
 def Nx(x):
     """The commutation column :math:`N_x`."""
-    if x >= 110:    # TODO: Get the last age from the table
-        return Dx(x)
-    else:
-        return Nx(x+1) + Dx(x)
+    return Dx(x) if x >= 110 else Nx(x+1) + Dx(x)
 
 
 def disc():
@@ -184,10 +166,7 @@ def dx(x):
 
 def lx(x):
     """The number of persons remaining at age ``x``. """
-    if x == 0:
-        return 100000
-    else:
-        return lx(x-1) - dx(x-1)
+    return 100000 if x == 0 else lx(x-1) - dx(x-1)
 
 
 def qx(x):

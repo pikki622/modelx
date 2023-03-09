@@ -71,7 +71,7 @@ def str_values():
 
     @defcells
     def a(name):
-        return 'Hello ' + name
+        return f'Hello {name}'
 
     @defcells
     def b(name):

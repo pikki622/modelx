@@ -70,10 +70,9 @@ def PV_BenefitTotal(t):
 
     if not exist.any():
         return 0
-    else:
-        result = -BenefitTotal(t) + PV_BenefitTotal(t+1) / (1 + DiscRate(t))
-        result.name = "PV_BenefitTotal"
-        return result
+    result = -BenefitTotal(t) + PV_BenefitTotal(t+1) / (1 + DiscRate(t))
+    result.name = "PV_BenefitTotal"
+    return result
 
 
 def PV_Check(t):
@@ -82,10 +81,7 @@ def PV_Check(t):
 
 def PV_ExpsAcq(t):
     """Present value of acquisition expenses"""
-    if t > last_t:
-        return 0
-    else:
-        return - ExpsAcq(t) + PV_ExpsAcq(t+1) / (1 + DiscRate(t))
+    return 0 if t > last_t else - ExpsAcq(t) + PV_ExpsAcq(t+1) / (1 + DiscRate(t))
 
 
 def PV_ExpsCommTotal(t):
@@ -111,10 +107,9 @@ def PV_ExpsTotal(t):
 
     if not exist.any():
         return 0
-    else:
-        result = exist * (-ExpsTotal(t)) + PV_ExpsTotal(t+1) / (1 + DiscRate(t))
-        result.name = "PV_ExpsTotal"
-        return result
+    result = exist * (-ExpsTotal(t)) + PV_ExpsTotal(t+1) / (1 + DiscRate(t))
+    result.name = "PV_ExpsTotal"
+    return result
 
 
 def PV_NetCashflow(t):

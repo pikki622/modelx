@@ -25,10 +25,7 @@ def errormodel():
 
     @mx.defcells
     def bar(x):
-        if x > 0:
-            return bar(x-1)
-        else:
-            return None
+        return bar(x-1) if x > 0 else None
 
     @mx.defcells
     def infinite(x):
@@ -37,7 +34,7 @@ def errormodel():
     @mx.defcells
     def listcomp(t):
         if t > 0:
-            return sum([listcomp(t - i) for i in range(1, 2)])
+            return sum(listcomp(t - i) for i in range(1, 2))
         else:
             raise ValueError()
 

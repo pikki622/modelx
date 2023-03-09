@@ -45,7 +45,7 @@ def _read_file():
 def write_pandas(obj, path_: pathlib.Path):
     src = obj._impl.source.copy()
     data = src["args"][0]
-    filename = obj.name + ".data"
+    filename = f"{obj.name}.data"
     data.to_pickle(str(path_.joinpath(filename)))
     src["args"][0] = filename
     return src
@@ -127,11 +127,7 @@ class _Instruction:
 
     def run(self):
 
-        if self.arghook:
-            args, kwargs = self.arghook(self)
-        else:
-            args, kwargs = self.args, self.kwargs
-
+        args, kwargs = self.arghook(self) if self.arghook else (self.args, self.kwargs)
         getattr(self.obj, self.method)(*args, **kwargs)
 
 
@@ -139,11 +135,7 @@ class _InstructionList(list):
 
     def run_methods(self, methods, obj=None, pop_items=True):
 
-        if pop_items:
-            list_ = self
-        else:
-            list_ = self.copy()
-
+        list_ = self if pop_items else self.copy()
         pos = 0
         while pos < len(list_):
             c = list_[pos]
@@ -182,16 +174,14 @@ class ModelWriter:
                 if model.doc is not None:
                     f.write("\"\"\"" + model.doc + "\"\"\"")
 
-                f.write("_name = " + json.JSONEncoder().encode(model.name))
+                f.write(f"_name = {json.JSONEncoder().encode(model.name)}")
                 f.write("\n\n")
 
                 self._write_allow_none(model, f)
 
-                f.write("_refs = " + _RefViewEncoder(
-                    owner=model,
-                    ensure_ascii=False,
-                    indent=4
-                ).encode(model.refs))
+                f.write(
+                    f"_refs = {_RefViewEncoder(owner=model, ensure_ascii=False, indent=4).encode(model.refs)}"
+                )
                 f.write("\n\n")
 
                 for space in model.spaces.values():
@@ -205,7 +195,7 @@ class ModelWriter:
                     path_ = self.root / space_path
                     if not path_.exists():
                         path_.mkdir()
-                    self._write_space(space, path_ / (space.name + ".py"))
+                    self._write_space(space, path_ / f"{space.name}.py")
         finally:
             self.call_ids = []
 
@@ -226,10 +216,9 @@ class ModelWriter:
             writer = _Instruction._METHODS[src["method"]]["writer"]
             src = writer(obj, path_)
 
-            file.write("_method = " + json.JSONEncoder(
-                ensure_ascii=False,
-                indent=4
-            ).encode(src))
+            file.write(
+                f"_method = {json.JSONEncoder(ensure_ascii=False, indent=4).encode(src)}"
+            )
             file.write("\n\n")
             self.call_ids.append(src["kwargs"]["call_id"])
 
@@ -237,18 +226,14 @@ class ModelWriter:
 
         def format_formula(obj):
 
-            if isinstance(obj, Cells):
-                target = obj.name
-            else:
-                target = "_formula"
-
+            target = obj.name if isinstance(obj, Cells) else "_formula"
             if obj.formula:
                 if obj.formula.source[:6] == "lambda":
-                    return target + " = " + obj.formula.source
+                    return f"{target} = {obj.formula.source}"
                 else:
                     return obj.formula.source
             else:
-                return target + " = None"
+                return f"{target} = None"
 
         with open(file, "w", encoding="utf-8") as f:
 
@@ -282,10 +267,9 @@ class ModelWriter:
                         f.write(format_formula(cells))
                         if cells.allow_none is not None:
                             f.write("\n")
-                            f.write(cells.name + ".allow_none = "
-                                    + json.JSONEncoder().encode(
-                                        cells.allow_none)
-                                    )
+                            f.write(
+                                f"{cells.name}.allow_none = {json.JSONEncoder().encode(cells.allow_none)}"
+                            )
                         f.write("\n\n")
 
             f.write(
@@ -303,7 +287,7 @@ class ModelWriter:
 
     def _write_allow_none(self, obj, file):
         if obj.allow_none is not None:
-            s = "_allow_none = " + json.JSONEncoder().encode(obj.allow_none)
+            s = f"_allow_none = {json.JSONEncoder().encode(obj.allow_none)}"
             file.write(s + "\n\n")
 
 
@@ -346,38 +330,36 @@ class _RefViewEncoder(json.JSONEncoder):
         }
 
         if obj is None:
-            result.update({
-                "__encoding": "None",
-                "__value": "None"
-            })
+            result |= {"__encoding": "None", "__value": "None"}
         elif isinstance(obj, types.ModuleType):
-            result.update({
+            result |= {
                 "__encoding": "Module",
                 "__value": obj.__name__,
-            })
+            }
         elif isinstance(obj, Interface):
-            result.update({
+            result |= {
                 "__encoding": "Interface",
                 "__value": abs_to_rel(obj._evalrepr, namespace),
-            })
+            }
 
         elif isinstance(obj, Sequence):
-            result.update({
+            result |= {
                 "__encoding": "Sequence",
-                "__value": [
-                    self._encode_refs(item, namespace) for item in obj],
-            })
+                "__value": [self._encode_refs(item, namespace) for item in obj],
+            }
         elif isinstance(obj, Mapping):
-            result.update({
+            result |= {
                 "__encoding": "Mapping",
                 "__value": [
-                    (self._encode_refs(key, namespace),
-                     self._encode_refs(value, namespace))
+                    (
+                        self._encode_refs(key, namespace),
+                        self._encode_refs(value, namespace),
+                    )
                     for key, value in obj.items()
                 ],
-            })
+            }
         else:
-            raise TypeError("Type %s not supported by JSON" % str(cls))
+            raise TypeError(f"Type {str(cls)} not supported by JSON")
 
         return result
 
@@ -471,11 +453,7 @@ class ModelReader:
         def parse_stmt(node):
             """Return (list of) instructions"""
             if isinstance(node, ast.FunctionDef):
-                if node.name == "_formula":
-                    method = "set_formula"
-                else:
-                    method = "new_cells"
-
+                method = "set_formula" if node.name == "_formula" else "new_cells"
                 funcdef = atok.get_text(node)
 
                 # The code below is just for adding back comment in the last line
@@ -626,16 +604,14 @@ class ModelReader:
 
         if encode == "None":
             return None
-        if encode == "Sequence":
-            return self._get_type(type_)(value)
+        if encode == "Interface":
+            return _RefData(evalrepr=rel_to_abs(value, namespace))
         elif encode == "Mapping":
             type_ = self._get_type(type_)
-            return type_({key: value for key, value in value})
-        elif encode == "Interface":
-            return _RefData(evalrepr=rel_to_abs(value, namespace))
+            return type_(dict(value))
         elif encode == "Module":
             return importlib.import_module(value)
-        elif encode == "Value":
+        elif encode in ["Sequence", "Value"]:
             return self._get_type(type_)(value)
         else:
             raise RuntimeError("must not happen")

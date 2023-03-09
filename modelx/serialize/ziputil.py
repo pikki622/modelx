@@ -75,7 +75,7 @@ def find_zip_parent(path: pathlib.Path):
             elif zipfile.is_zipfile(p.parent):
                 return p.parent
             else:
-                raise ValueError("invalid path %s" % str(path))
+                raise ValueError(f"invalid path {str(path)}")
         else:
             p = p.parent
             continue
@@ -83,53 +83,38 @@ def find_zip_parent(path: pathlib.Path):
 
 def exists(path: pathlib.Path):
 
-    root = find_zip_parent(path)
-
-    if root:
-        archive = get_archive_path(path, root)
-        namelist = zipfile.ZipFile(root).namelist()
-        if archive:
-            if archive in namelist:
-                return True
-            elif archive + "/" in set(
-                    n[:len(archive) + 1] for n in namelist):
-                return True
-            else:
-                return False
-        else:
-            return True
-    else:
+    if not (root := find_zip_parent(path)):
         return path.exists()
+    archive = get_archive_path(path, root)
+    namelist = zipfile.ZipFile(root).namelist()
+    if archive:
+        if archive in namelist:
+            return True
+        elif f"{archive}/" in {n[: len(archive) + 1] for n in namelist}:
+            return True
+        else:
+            return False
+    else:
+        return True
 
 
 def is_dir(path: pathlib.Path):
 
-    root = find_zip_parent(path)
-
-    if root:
-        archive = get_archive_path(path, root)
-
-        if archive:
-            namelist = zipfile.ZipFile(root).namelist()
-            if archive + "/" in set(
-                    n[:len(archive) + 1] for n in namelist):
-                return True
-            else:
-                return False
-        else:
-            return True
-    else:
+    if not (root := find_zip_parent(path)):
         return path.is_dir()
+    if archive := get_archive_path(path, root):
+        namelist = zipfile.ZipFile(root).namelist()
+        return f"{archive}/" in {n[:len(archive) + 1] for n in namelist}
+    else:
+        return True
 
 
 def _archive_exists(archive: str, file: zipfile.ZipFile):
 
     if archive not in file.namelist():
         return False
-    else:
-        warnings.warn(
-            "'%s' already exists in %s" % (archive, str(file)))
-        return True
+    warnings.warn(f"'{archive}' already exists in {str(file)}")
+    return True
 
 
 def is_valid_archive_path(archive, file: zipfile.ZipFile):
@@ -140,14 +125,12 @@ def is_valid_archive_path(archive, file: zipfile.ZipFile):
     """
     archive = str(archive)
 
-    if archive + "/" in set(n[:len(archive + "/")] for n in file.namelist()):
+    if f"{archive}/" in {n[: len(f"{archive}/")] for n in file.namelist()}:
         return False
 
-    for name in file.namelist():
-        if name.split("/") == archive.split("/")[-1]:
-            return False
-
-    return True
+    return all(
+        name.split("/") != archive.split("/")[-1] for name in file.namelist()
+    )
 
 
 def write_str(string: str, path: pathlib.Path,
@@ -174,23 +157,21 @@ def pandas_to_pickle(obj, path: pathlib.Path,
                      compression=None,
                      compresslevel=None):
 
-    root = find_zip_parent(path)
-
-    if root:
+    if root := find_zip_parent(path):
         with tempfile.TemporaryDirectory() as dirname:
             filepath = str(pathlib.Path(dirname).joinpath("temp"))
             obj.to_pickle(filepath)
             archive = get_archive_path(path, root)
             with zipfile.ZipFile(
-                    root,
-                    mode="a",
-                    **_compress_kwargs(compression, compresslevel)
-                    ) as f:
+                                root,
+                                mode="a",
+                                **_compress_kwargs(compression, compresslevel)
+                                ) as f:
                 if not _archive_exists(archive, f):
                     if is_valid_archive_path(archive, f):
                         f.write(filepath, archive)
                     else:
-                        raise ValueError("invalid archive '%s'" % archive)
+                        raise ValueError(f"invalid archive '{archive}'")
 
     else:
         make_parent_dir(path)
@@ -208,7 +189,7 @@ def write_file(callback, path: pathlib.Path, mode,
         encoding = encoding or locale.getpreferredencoding()
         def encode(s): return s.encode(encoding)
     else:
-        raise ValueError("invalid mode: %s" % mode)
+        raise ValueError(f"invalid mode: {mode}")
 
     def get_io(mode):
         if mode == "b":
@@ -228,16 +209,16 @@ def write_file(callback, path: pathlib.Path, mode,
         archive = get_archive_path(path, root)
         with get_io(mode) as buff:
             with zipfile.ZipFile(
-                    root, mode="a",
-                    **_compress_kwargs(compression, compresslevel)
-            ) as f:
+                                root, mode="a",
+                                **_compress_kwargs(compression, compresslevel)
+                        ) as f:
                 if not _archive_exists(archive, f):
                     if is_valid_archive_path(archive, f):
                         callback(buff)
                         buff.seek(0)
                         f.writestr(archive, encode(buff.read()))
                     else:
-                        raise ValueError("invalid archive '%s'" % archive)
+                        raise ValueError(f"invalid archive '{archive}'")
 
     else:
         make_parent_dir(path)
@@ -265,16 +246,16 @@ def copy_file(src: pathlib.Path, dst: pathlib.Path,
         with zipfile.ZipFile(root_src, mode="r") as zip_src:
             with zip_src.open(arc_src, mode="r") as f_src:
                 with zipfile.ZipFile(
-                        root_dst, mode="a",
-                        **_compress_kwargs(compression, compresslevel)
-                        ) as zip_dst:
+                                        root_dst, mode="a",
+                                        **_compress_kwargs(compression, compresslevel)
+                                        ) as zip_dst:
                     if not _archive_exists(arc_dst, zip_dst):
                         if is_valid_archive_path(arc_dst, zip_dst):
                             zip_dst.writestr(arc_dst, f_src.read())
                         else:
-                            raise ValueError("invalid archive '%s'" % arc_dst)
+                            raise ValueError(f"invalid archive '{arc_dst}'")
 
-    elif root_src and not root_dst:
+    elif root_src:
 
         arc_src = get_archive_path(src, root_src)
         with zipfile.ZipFile(root_src, mode="r") as zip_src:
@@ -286,23 +267,20 @@ def copy_file(src: pathlib.Path, dst: pathlib.Path,
                     str(pathlib.Path(dst))
                 )
 
-    elif not root_src and root_dst:
+    elif root_dst:
 
         arc_dst = get_archive_path(dst, root_dst)
         with zipfile.ZipFile(root_dst, mode="a",
-                             **_compress_kwargs(compression, compresslevel)
-                             ) as zip_dst:
+                                     **_compress_kwargs(compression, compresslevel)
+                                     ) as zip_dst:
             if not _archive_exists(arc_dst, zip_dst):
                 if is_valid_archive_path(arc_dst, zip_dst):
                     zip_dst.write(src, arc_dst)
                 else:
-                    raise ValueError("invalid archive '%s'" % arc_dst)
-
-    elif not root_src and not root_dst:
-        shutil.copyfile(str(src), str(dst))
+                    raise ValueError(f"invalid archive '{arc_dst}'")
 
     else:
-        raise RuntimeError("must not happen")
+        shutil.copyfile(str(src), str(dst))
 
 
 def copy_dir_to_zip(src: pathlib.Path, dest: pathlib.Path,

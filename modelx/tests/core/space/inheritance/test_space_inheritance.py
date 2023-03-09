@@ -10,10 +10,7 @@ import pytest
 
 
 def fibo(x):
-    if x == 0 or x == 1:
-        return x
-    else:
-        return fibo(x - 1) + fibo(x - 2)
+    return x if x in [0, 1] else fibo(x - 1) + fibo(x - 2)
 
 
 @pytest.fixture
@@ -174,10 +171,7 @@ def test_space_new_cells_override(testspaces):
     target, source = testspaces
 
     def fibo_new(x):
-        if x == 0 or x == 1:
-            return x + 1
-        else:
-            return fibo(x - 1) + fibo(x - 2)
+        return x + 1 if x in [0, 1] else fibo(x - 1) + fibo(x - 2)
 
     cells = target.cells["fibo"]
     assert cells._is_derived

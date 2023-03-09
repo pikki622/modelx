@@ -53,7 +53,7 @@ def test_unpickled_model(pickletest):
 
     errors = []
 
-    if not model.name == unpickeld.name:
+    if model.name != unpickeld.name:
         errors.append("name did not match")
 
     if not hasattr(model, "interface"):

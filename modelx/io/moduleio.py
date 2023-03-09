@@ -48,9 +48,7 @@ class ModuleIO(BaseSharedIO):
     def _on_update_value(self, value, kwargs):
         if isinstance(value, (ModuleType, str, os.PathLike)):
             self._load_from = self._get_module_path(value)
-        elif value is None:     # reload current
-            pass
-        else:
+        elif value is not None:
             raise ValueError("must not happen")
         self.source = None  # call _load_module to set source
 
@@ -87,10 +85,7 @@ class ModuleData(BaseIOSpec):
 
     def __init__(self, module=None):
         BaseIOSpec.__init__(self)
-        if isinstance(module, ModuleType):
-            self._value = module
-        else:
-            self._value = None
+        self._value = module if isinstance(module, ModuleType) else None
 
     def _on_load_value(self):
         self._value = self._io._load_module()
@@ -123,4 +118,4 @@ class ModuleData(BaseIOSpec):
         return self._value
 
     def __repr__(self):
-        return "<ModuleData path=%s>" % repr(str(self._io.path.as_posix()))
+        return f"<ModuleData path={repr(str(self._io.path.as_posix()))}>"

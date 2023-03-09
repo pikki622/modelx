@@ -221,11 +221,7 @@ def MortFactor(y):
 
         result = AssumptionTables.get((table, y), None)
 
-        if result is None:
-            return MortFactor(y-1)[pol.name]
-        else:
-            return result
-
+        return MortFactor(y-1)[pol.name] if result is None else result
 
     return PolicyData.apply(lambda pol: get_factor(pol, y), axis=1)
 
@@ -253,11 +249,7 @@ def SurrRate(y):
 
         result = AssumptionTables.get((table, y), None)
 
-        if result is None:
-            return SurrRate(y-1)[pol.name]
-        else:
-            return result
-
+        return SurrRate(y-1)[pol.name] if result is None else result
 
     return PolicyData.apply(lambda pol: get_factor(pol, y), axis=1)
 

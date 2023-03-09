@@ -107,7 +107,7 @@ def GrossPremRate():
 
         comf = LifeTable[pol['Sex'], pol['IntRate_PREM'], pol['TableID_PREM']]
 
-        if prod == 'TERM' or prod == 'WL':
+        if prod in ['TERM', 'WL']:
             return (comf.Axn(x, n) + alpha + gamma * comf.AnnDuenx(x, n, freq)
                     + gamma2 * comf.AnnDuenx(x, n-m, 1, m)) / (1-beta-delta) / freq / comf.AnnDuenx(x, m, freq)
 
@@ -116,6 +116,7 @@ def GrossPremRate():
                     + gamma2 * comf.AnnDuenx(x, n-m, 1, m)) / (1-beta-delta) / freq / comf.AnnDuenx(x, m, freq)
         else:
             raise ValueError('invalid product')
+
 
 
     result = data.apply(get_value, axis=1)
@@ -177,7 +178,7 @@ def IntRate(RateBasis):
 
 
     result = PolicyData.apply(get_value, axis=1)
-    result.name = 'IntRate_' + RateBasis
+    result.name = f'IntRate_{RateBasis}'
     return result
 
 
@@ -271,9 +272,9 @@ def NetPremRate(basis):
 
         x, n, m = pol['IssueAge'], pol['PolicyTerm'], pol['PolicyTerm']
 
-        comf = LifeTable[pol['Sex'], pol['IntRate_' + basis], pol['TableID_' + basis]]
+        comf = LifeTable[pol['Sex'], pol[f'IntRate_{basis}'], pol[f'TableID_{basis}']]
 
-        if prod == 'TERM' or prod == 'WL':
+        if prod in ['TERM', 'WL']:
             return (comf.Axn(x, n) + gamma2 * comf.AnnDuenx(x, n-m, 1, m)) / comf.AnnDuenx(x, n)
 
         elif prod == 'ENDW':
@@ -283,8 +284,9 @@ def NetPremRate(basis):
             raise ValueError('invalid product')
 
 
+
     result = data.apply(get_value, axis=1)
-    result.name = 'NetPremRate_' + basis
+    result.name = f'NetPremRate_{basis}'
 
     return result
 
@@ -303,11 +305,11 @@ def ReserveNLP_Rate(basis, t):
 
         prod = pol['Product']
         gamma2 = pol['LoadMaintSA2']
-        netp = pol['NetPremRate_' + basis]
+        netp = pol[f'NetPremRate_{basis}']
 
         x, n, m = pol['IssueAge'], pol['PolicyTerm'], pol['PolicyTerm']
 
-        lt = LifeTable[pol['Sex'], pol['IntRate_' + basis], pol['TableID_' + basis]]
+        lt = LifeTable[pol['Sex'], pol[f'IntRate_{basis}'], pol[f'TableID_{basis}']]
 
         if t <= m:
             return lt.Axn(x+t, n-t) + (gamma2 * lt.AnnDuenx(x+t, n-m, 1, m-t)
@@ -316,6 +318,7 @@ def ReserveNLP_Rate(basis, t):
             return lt.Axn(x+t, n-t) + gamma2 * lt.AnnDuenx(x+t, n-m, 1, m-t)
         else:
             return 0
+
 
 
     result = data.apply(get_value, axis=1)
@@ -360,7 +363,7 @@ def TableID(RateBasis):
 
 
     result = PolicyData.apply(get_value, axis=1)
-    result.name = 'TableID_' + RateBasis
+    result.name = f'TableID_{RateBasis}'
     return result
 
 
